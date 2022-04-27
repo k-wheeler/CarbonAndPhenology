@@ -1,0 +1,86 @@
+source('read_Licor.R')
+source('fitA.R')
+dataDirectory <- "Data/Licor_Measurements/"
+leafNames <- c("B1A","B1B","B1C","B1D","B1E","B1F",
+               "B2A","B2B","B2C","B2D","B2E","B2F",
+               "B3A","B3B","B3C","B3D","B3E","B3F",
+               "O1A","O1B","O1C","O1D","O1E","O1F",
+               "O2A","O2B","O2C","O2D","O2E","O2F",
+               "O3A","O3B","O3C","O3D","O3E","O3F",
+               "O4A","O4B","O4C","O4D","O4E","O4F")
+allPhoto <- matrix(ncol=4,nrow=0) #LeafName, dte, Vcmax, Jmax
+allDates <- rep(Sys.Date(),51)
+#allPhoto <- rbind(allPhoto,c("Test",as.Date(Sys.Date()),NA,NA))
+j=1
+pdf(file="FieldWorkResponseCurves.pdf",height=5,width=12)
+par(mfrow=c(1,2))
+for(l in 1:length(leafNames)){
+  files <- dir(path=dataDirectory,pattern=leafNames[l])
+  jmax <- numeric()
+  vcmax <- numeric()
+  dates <- rep(Sys.Date(),length(files))
+  if(length(files)>0){
+    for(f in 1:length(files)){
+      fileName <- paste0(dataDirectory,files[f])
+      print(fileName)
+      dteChar <- strsplit(files[f],"-")[[1]][2]
+      if(substr(dteChar,3,3)=="A"){
+        dte <- as.Date(paste0("2021-08-",substr(dteChar,1,2)))
+      }else if(substr(dteChar,3,3)=="S"){
+        dte <- as.Date(paste0("2021-09-",substr(dteChar,1,2)))
+      }
+      print(dte)
+      dat <- read_Licor(filename=fileName)
+      out <- fitA(flux.data = dat)
+      jmax <- c(jmax,mean(data.frame(as.matrix(out$params))$Jmax0))
+      vcmax <- c(vcmax,mean(data.frame(as.matrix(out$params))$vmax0))
+      dates[f] <- dte
+      allPhoto <- rbind(allPhoto,c(leafNames[l],dte,mean(data.frame(as.matrix(out$params))$Jmax0),mean(data.frame(as.matrix(out$params))$vmax0)))
+      allDates[j] <- dte
+      j <- j+1
+      plot_photo2(dat,out,byLeaf=FALSE,id=paste(leafNames[l],dte))
+      #plot(dat$Ci,dat$Photo,pch=20,main=paste(leafNames[l],dte))
+      #plot(dat$PARi,dat$Photo,pch=20,main=paste(leafNames[l],dte))
+    }
+    plot(dates,vcmax,main=paste(leafNames[l],"Vcmax"),pch=20)
+    plot(dates,jmax,main=paste(leafNames[l],"Jmax"),pch=20)
+  }
+}
+dev.off()
+##Note: leafNames changes to sorted by height
+jpeg("allPhotoParametersAgainstTime.jpeg",width=7,height=7,units = "in",res=1000)
+par(mfrow=c(2,1))
+par(mai=c(0.8,1,0.5,0.1))
+plot(allDates,as.numeric(allPhoto[,3]),pch=20,cex=0.2,xlab="Time",ylab="Jmax",ylim=c(20,280),main="Lighter is Higher Height (By Species)")
+for(l in 1:length(leafNames)){
+  subDat <- allPhoto[allPhoto[,1]==leafNames[l],]
+  subDts <- allDates[allPhoto[,1]==leafNames[l]]
+  lines(subDts[order(subDts)],as.numeric(subDat[,3])[order(subDts)],col=cols[l])
+}
+
+for(i in 1:nrow(allPhoto)){
+  if(substr(allPhoto[i,1],1,1)=="B"){
+    points(allDates[i],allPhoto[i,3],pch=20,col=cols[which(leafNames==allPhoto[i,1])])
+  }else{
+    points(allDates[i],allPhoto[i,3],pch=17,col=cols[which(leafNames==allPhoto[i,1])])
+  }
+}
+legend('topright',c("Beech","Oak"),pch=c(20,17))
+
+plot(allDates,as.numeric(allPhoto[,4]),pch=20,cex=0.2,xlab="Time",ylab="Vcmax",ylim=c(20,140),main="Lighter is Higher Height(By Species)")
+for(l in 1:length(leafNames)){
+  subDat <- allPhoto[allPhoto[,1]==leafNames[l],]
+  subDts <- allDates[allPhoto[,1]==leafNames[l]]
+  lines(subDts[order(subDts)],as.numeric(subDat[,4])[order(subDts)],col=cols[l])
+}
+for(i in 1:nrow(allPhoto)){
+  if(substr(allPhoto[i,1],1,1)=="B"){
+    points(allDates[i],allPhoto[i,4],pch=20,col=cols[which(leafNames==allPhoto[i,1])])
+  }else{
+    points(allDates[i],allPhoto[i,4],pch=17,col=cols[which(leafNames==allPhoto[i,1])])
+  }
+}
+dev.off()
+
+
+
