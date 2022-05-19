@@ -7,11 +7,12 @@
 ##' @param flux.data  data.frame of Licor data, concatenated by rows, and with a leading column 'fname' that is used to count the number of curves and match to covariates
 ##' @param cov.data   data.frame of covariate data. Column names used in formulas
 ##' @param model      list including at least 6 components: the fixed effects model for alpha (a.fixed) and Vcmax (V.fixed), the random effects for these (a.random, V.random), the variable used to match the gas-exchange and covariate data (match), and the number of MCMC interations (n.iter). Additional optional arguments: TPU = TRUE turns on TPU limitation; Temp == 'Bernacchi01' turns on the Bernacchi et al 2001 temperature correction. If this is turned on all parameters are estimated for 25C, otherwise no temperature correction is applied. Setting Temp = 'June2004' will turn on the June et al 2004 Funct Plant Biol temperature correction to Jmax. Note: these two corrections are not mutually exclusive, you can set Temp = c('June2004','Bernacchi2001')
+##' @param hiearchical Boolean if you want hiearchical
 ##' 
 ##' Right now the fixed effects are specified as a string using the standard R lm formula syntax, but without the LHS variable (e.g. '~ SLA + chl + SLA:chl'). The tilde is optional. For random effects, the two options right now are just 'leaf' for leaf-level random effects and NULL. 'model' has a default that sets all effects to NULL (fit one curve to all data) and n.iter=1000.
 ##' 
-fitA <- function(flux.data, cov.data = NULL, model = NULL) {
-  
+fitA <- function(flux.data, cov.data = NULL, model = NULL,hiearchical) {
+  #partialFile=paste0('LicorFits/',"beechTest_all_randomEffect_A_V_LicorResponseCurve_partial_varBurn.RData")
   ##  TO-DO: 
   ##  Random effects using design matrix
   ##  Model selection
@@ -26,7 +27,12 @@ fitA <- function(flux.data, cov.data = NULL, model = NULL) {
     model <- list(a.fixed = NULL, a.random = NULL, V.fixed = NULL, V.random = NULL, 
                   n.iter = 5000, match = "fname")
   }
-  out.variables <- c("r0", "vmax0", "alpha0", "Jmax0", "cp0", "tau", "pmean", "pA")
+  if(hiearchical){
+    out.variables <- c("r0", "vmax0", "alpha0", "Jmax0", "cp0", "tau", "pmean","pA","Vleaf","Aleaf")
+  }else{
+    out.variables <- c("r0", "Jmax0", "cp0", "tau","pA","vmax0","alpha0","pmean")
+  }
+  print(out.variables)
   
   a.fixed <- model$a.fixed
   a.random <- model$a.random
@@ -239,18 +245,31 @@ fitA <- function(flux.data, cov.data = NULL, model = NULL) {
   init <- list()
   init[[1]] <- list(r0 = 1.2, vmax0 = 39, alpha0 = 0.25, tau = 10, cp0 = 6, Jmax0 = 80)  ## tau.Vleaf=30,beta1=4, beta2=1,beta5=3,tau.Vmon=10,tpu=10,
   init[[2]] <- list(r0 = 1, vmax0 = 100, alpha0 = 0.2, tau = 20, cp0 = 4, Jmax0 = 150)  ##tau.Vleaf=20,beta1=1,beta2=1,beta5=-1,tau.Vmon=20,tpu=13,
-  init[[3]] <- list(r0 = 2, vmax0 = 60, alpha0 = 0.28, tau = 20, cp0 = 5, Jmax0 = 60)  ##tau.Vleaf=100,beta1=1,beta2=2,beta5=2,tau.Vmon=3,tpu=20,
-  
-  mc3 <- jags.model(file = textConnection(my.model), data = mydat, inits = init, n.chains = 3)
+  init[[3]] <- list(r0 = 2, vmax0 = 60, alpha0 = 0.28, tau = 20, cp0 = 5, Jmax0 = 60) 
+  init[[4]] <- list(r0 = 2, vmax0 = 60, alpha0 = 0.28, tau = 20, cp0 = 5, Jmax0 = 60) 
+  init[[5]] <- list(r0 = 1.2, vmax0 = 39, alpha0 = 0.25, tau = 10, cp0 = 6, Jmax0 = 80)
+##tau.Vleaf=100,beta1=1,beta2=2,beta5=2,tau.Vmon=3,tpu=20,
+  print(my.model)
+  mc3 <- jags.model(file = textConnection(my.model), data = mydat, inits = init, n.chains = 5,n.adapt = 3000)
   
   mc3.out <- coda.samples(model = mc3, variable.names = out.variables, n.iter = model$n.iter)
+  out.burn <- runLicorIter(j.model=mc3,variableNames=out.variables,
+                                  baseNum = 50000,iterSize = 50000,effSize = 5000)
   
   ## split output
-  out         <- list(params = NULL, predict = NULL, model = my.model)
-  mfit        <- as.matrix(mc3.out, chains = TRUE)
-  pred.cols   <- union(grep("pA", colnames(mfit)), grep("pmean", colnames(mfit)))
-  chain.col   <- which(colnames(mfit) == "CHAIN")
-  out$predict <- mat2mcmc.list(mfit[, c(chain.col, pred.cols)])
-  out$params  <- mat2mcmc.list(mfit[, -pred.cols])
-  return(out)
+  # out         <- list(params = NULL, predict = NULL, model = my.model)
+  # mfit        <- as.matrix(mc3.out, chains = TRUE)
+  # pred.cols   <- union(grep("pA", colnames(mfit)), grep("pmean", colnames(mfit)))
+  # chain.col   <- which(colnames(mfit) == "CHAIN")
+  # out$predict <- mat2mcmc.list(mfit[, c(chain.col, pred.cols)])
+  # out$params  <- mat2mcmc.list(mfit[, -pred.cols])
+  if(typeof(out.burn)!=typeof(FALSE)){
+    out.mat <- as.matrix(out.burn$params)
+    thinAmount <- round(nrow(out.mat)/5000,digits=0)
+    out.burn2 <- list()
+    out.burn2$params <- window(out.burn$params,thin=thinAmount)
+    out.burn2$predict <- window(out.burn$predict,thin=thinAmount)
+    out.burn <- out.burn2
+  }
+  return(out.burn)
 } # fitA
