@@ -15,7 +15,7 @@ ciEnvelope <- function(x, ylo, yhi, col = "lightgrey", ...) {
 ##' @title plot_photo
 ##' @author Mike Dietze
 ##' @export
-plot_photo <- function(data, out, curve = c("ACi", "AQ"), tol = 0.05, byLeaf = TRUE,id="") {
+plot_photo2 <- function(data, out, curve = c("ACi", "AQ"), tol = 0.05, byLeaf = TRUE,id="") {
   
   params  <- as.matrix(out$params)
   predict <- as.matrix(out$predict)

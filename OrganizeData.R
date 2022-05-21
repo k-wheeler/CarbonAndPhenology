@@ -1,32 +1,19 @@
 #Organize Data
 library(suncalc)
 library('dplyr')
+source('metFunctions.R')
 
-leafNames <- c("B1A","B1B","B1C","B1D","B1E","B1F",
-               "B2A","B2B","B2C","B2D","B2E","B2F",
-               "B3A","B3B","B3C","B3D","B3E","B3F",
-               "O1A","O1B","O1C","O1D","O1E","O1F",
-               "O2A","O2B","O2C","O2D","O2E","O2F",
-               "O3A","O3B","O3C","O3D","O3E","O3F",
-               "O4A","O4B","O4C","O4D","O4E","O4F")
-trees <- c("B1","B2","B3","O1","O2","O3","O4")
-letterSequence <- c("a","b","c","d","e","f")
-dataDirectory <- "Data/CCI_Measurements/"
+##Organize Leaf-Level Data ----
 heightData <- read.csv('Data/leafHeights.csv',stringsAsFactors = FALSE)
 heightData$Height <- heightData$Height*2.54 #Convert from inches to cm
 leafNames <- heightData$LeafName[order(heightData$Height,decreasing = FALSE)]
 output <- matrix(nrow=0,ncol=4)
 for(t in 1:length(trees)){
   tree <- trees[t]
-  #print(tree)
-  files <- dir(path=dataDirectory,pattern=tree)
+  files <- dir(path=CCIdataDirectory,pattern=tree)
   for(f in 1:length(files)){
-    dat <- read.csv(paste0(dataDirectory,files[f]),stringsAsFactors = FALSE,header=TRUE)
+    dat <- read.csv(paste0(CCIdataDirectory,files[f]),stringsAsFactors = FALSE,header=TRUE)
     dte <- strsplit(as.character(dat$Time.Date[2])," ")[[1]][2]
-    # if(is.na(dte)){
-    #   print(tree)
-    #   print(f)
-    # }
     sds <- numeric()
     means <- numeric()
     vls <- numeric()
@@ -50,118 +37,17 @@ for(t in 1:length(trees)){
 output <- as.data.frame(output)
 colnames(output) <- c("Leaf","Date","CCI_mean","CCI_sd")
 output$Date <- as.Date(output$Date,format="%m/%d/%Y")
-colfunc <- colorRampPalette(c("black", "white"))
-cols <- c(colfunc(25)[1:18],colfunc(30)[1:24])
-cols2 <- c(rep(cols[1],3),rep(cols[4],3),rep(cols[7],3),rep(cols[10],3),
-           rep(cols[13],3),rep(cols[16],3),rep(cols[19],3),rep(cols[22],3),
-           rep(cols[25],3),rep(cols[28],3),rep(cols[31],3),rep(cols[33],3),
-           rep(cols[36],3),rep(cols[39],3))
-#test <- output[order(output$Date),]
-jpeg("leafCCI_data.jpeg",width=7,height=6.4,units = "in",res=1000)
-par(mfrow=c(2,1))
-par(mai=c(0.8,1,0.5,0.1))
-subDat <- subset(output,Leaf==leafNames[19])
-leafHeight <- heightData$Height[heightData$LeafName==leafNames[19]]
-plot(subDat$Date,as.numeric(as.character(subDat$CCI_mean)),type = "l",
-     ylim=c(0,25),xlim=range(output$Date),main="Oak Leaves (light is higher)",ylab="CCI",xlab="",bty="n",col=cols2[19])
-for(i in 20:length(leafNames)){
-  subDat <- subset(output,Leaf==leafNames[i])
-  leafHeight <- heightData$Height[heightData$LeafName==leafNames[i]]
-  lines(subDat$Date,as.numeric(as.character(subDat$CCI_mean)),col=cols2[i])
-}
 
-subDat <- subset(output,Leaf==leafNames[1])
-leafHeight <- heightData$Height[heightData$LeafName==leafNames[1]]
-plot(subDat$Date,as.numeric(as.character(subDat$CCI_mean)),type = "l",
-     ylim=c(0,25),xlim=range(output$Date),
-     xlab="Date", ylab="CCI",bty="n",main="Beech Leaves (light is higher)",col=cols2[1])
-for(i in 2:18){
-  subDat <- subset(output,Leaf==leafNames[i])
-  leafHeight <- heightData$Height[heightData$LeafName==leafNames[19]]
-  lines(subDat$Date,as.numeric(as.character(subDat$CCI_mean)),col=cols2[i])
-}
-
-dev.off()
 dates <- seq(as.Date('2021-08-01'),as.Date('2021-11-30'),'day')
-lat <- 42.5351
-long <- -72.1744
-dayLengths <- numeric()
-sunRises <- rep(Sys.time(),length(dates))
-sunSets <- rep(Sys.time(),length(dates))
-for(d in 1:length(dates)){
-  suntimes <- getSunlightTimes(date=dates[d],
-                               lat=lat,lon=long,keep=c("nauticalDawn","nauticalDusk"),
-                               tz = "GMT") #GMT because I only care about difference
-  dayLengths <- c(dayLengths,as.numeric(suntimes$nauticalDusk-suntimes$nauticalDawn))
-  sunRises[d] <- (suntimes$nauticalDawn)
-  sunSets[d] <- (suntimes$nauticalDusk)
-}
-#Read in met data
-metHeights <- c(28,18,9,1)*100 #Heights in mm of met sensor locations
 
-metHeightNames <- c('airt.ac','airt.mid','airt.low','airt.us1')
-metDat <- read.csv('Data/hf282-01-hdwd-tower.csv',stringsAsFactors = FALSE)
-#metDat$datetime <- as.POSIXlt(metDat$datetime)
-subMet <- metDat[lubridate::date(metDat$datetime)%in%dates,
-                 c('datetime','airt.ac','airt.mid','airt.low')]
-subMet$datetime <- stringr::str_replace(subMet$datetime,"T"," ")
-subMet$datetime <- as.POSIXct(subMet$datetime,format='%Y-%m-%d %H:%M')
-subMet$date <- lubridate::date(subMet$datetime)
-subMet$airt.ac <- as.numeric(subMet$airt.ac)
-subMet$airt.mid <- as.numeric(subMet$airt.mid)
-subMet$airt.low <- as.numeric(subMet$airt.low)
-dailyMet <- as.data.frame(matrix(nrow=length(dates),ncol=5))
-colnames(dailyMet) <- c('date','airt.ac','airt.mid','airt.low','airt.us1')
-dailyMet$date <- dates
-#subMet$date <- as.Date(subMet$date)
-splitMet <- split(subMet,subMet$date)
-splitDates <- as.Date(names(splitMet))
-for(d in 1:length(dates)){
-  ind <- which(splitDates==dates[d])
-  if(length(ind)>0){
-    dateMet <- splitMet[ind][[1]]
-    dayMet <- dateMet[dateMet$datetime>sunRises[d]&dateMet$datetime<sunSets[d],]
-    dailyMet$airt.ac[d] <- mean(dayMet$airt.ac,na.rm=TRUE)
-    dailyMet$airt.mid[d] <- mean(dayMet$airt.mid,na.rm=TRUE)
-    dailyMet$airt.low[d] <- mean(dayMet$airt.low,na.rm=TRUE)
-  }
-}
-
-# dailyMet$airt.ac<- sapply(split(subMet[,2],subMet$date),mean)
-# dailyMet$airt.mid<- sapply(split(subMet[,3],subMet$date),mean)
-# dailyMet$airt.low<- sapply(split(subMet[,4],subMet$date),mean)
-# dailyMet$airt.ac[is.na(dailyMet$airt.ac)] <- dailyMet$airt.ac[which(is.na(dailyMet$airt.ac))-1]
-# dailyMet$airt.mid[is.na(dailyMet$airt.mid)] <- dailyMet$airt.mid[which(is.na(dailyMet$airt.mid))-1]
-# dailyMet$airt.low[is.na(dailyMet$airt.low)] <- dailyMet$airt.low[which(is.na(dailyMet$airt.low))-1]
-
-metDat2 <- read.csv('Data/hf282-02-hdwd-tower-understory.csv',stringsAsFactors = FALSE)
-subMet2 <- metDat2[lubridate::date(metDat2$datetime)%in%dates,
-                 c('datetime','airt.us1')]
-subMet2$date <- lubridate::date(subMet2$datetime)
-subMet2$datetime <- stringr::str_replace(subMet2$datetime,"T"," ")
-subMet2$datetime <- as.POSIXct(subMet2$datetime,format='%Y-%m-%d %H:%M')
-splitMet <- split(subMet2,subMet2$date)
-splitDates <- as.Date(names(splitMet))
-for(d in 1:length(dates)){
-  ind <- which(splitDates==dates[d])
-  if(length(ind)>0){
-    dateMet <- splitMet[ind][[1]]
-    dayMet <- dateMet[dateMet$datetime>sunRises[d]&dateMet$datetime<sunSets[d],]
-    dailyMet$airt.us1[d] <- mean(dayMet$airt.us1)
-  } 
-
-}
-# dailyMet$airt.us1<- sapply(split(subMet2[,2],subMet2$date),mean)
-dailyMet$airt.us1[is.na(dailyMet$airt.us1)] <- dailyMet$airt.us1[which(is.na(dailyMet$airt.us1))-1]
-dailyMet$airt.us1[is.na(dailyMet$airt.us1)] <- dailyMet$airt.us1[which(is.na(dailyMet$airt.us1))-1]
-dailyMet$airt.us1[is.na(dailyMet$airt.us1)] <- dailyMet$airt.us1[which(is.na(dailyMet$airt.us1))-1]
-dailyMet$airt.us1[is.na(dailyMet$airt.us1)] <- dailyMet$airt.us1[which(is.na(dailyMet$airt.us1))-1]
-
-plot(dates,dailyMet$airt.ac,pch=20,ylim=c(-10,30),col="#0868ac",cex=2,xlab="Date",ylab="Tair (C)",main="Average Day Time Temperature")
-points(dates,dailyMet$airt.mid,pch=20,col="#43a2ca",cex=2)
-points(dates,dailyMet$airt.low,pch=20,col="#7bccc4",cex=2)
-points(dates,dailyMet$airt.us1,pch=20,col="#bae4bc",cex=2)
-legend('bottomleft',legend=metHeights,col=c("#0868ac","#43a2ca","#7bccc4","#bae4bc"),pch=rep(20,4),cex=1.5)
+dayLengthMat <- calculateDayLengths(dates)
+dayLengths <- dayLengthMat[,1]
+sunRises <- dayLengthMat[,2]
+sunSets <- dayLengthMat[,3]
+fittedMet <- read.csv("DailyDaytimeVerticalTemperatureProfiles.csv")
+fittedParMet <- read.csv("DailyDaytimeVerticalParProfiles.csv")
+fittedRHMet <- read.csv('DailyDaytimeVerticalRHProfiles.csv')
+dailyMet <- read.csv("dailyMetFallOnly.csv",header=TRUE)
 
 for(l in 1:length(leafNames)){
   lfName <- leafNames[l]
@@ -173,24 +59,240 @@ for(l in 1:length(leafNames)){
   subDat <- subDat[!duplicated(subDat[,2]),]
   finalMat <- merge(finalMat,subDat,"Date",all=TRUE)
   finalMat[,3:4] <- scales::rescale(c(as.numeric(as.character(finalMat$CCI_mean)),
-                                      as.numeric(as.character(finalMat$CCI_sd))),to=c(0,1))
+                                      as.numeric(as.character(finalMat$CCI_sd))),to=c(0.0001,0.9999))
   finalMat$CCI_sd[is.na(finalMat$CCI_sd)] <- mean(finalMat$CCI_sd,na.rm=TRUE)
   finalData <- list(leaf=lfName,CCI_means=as.numeric(as.character(finalMat$CCI_mean)),
                     CCI_precs=1/(as.numeric(as.character(finalMat$CCI_sd)))**2)
-  
+  finalData$CCI_precs[is.infinite(finalData$CCI_precs)] <- getmode(finalData$CCI_precs)
+  finalData$CCI_precs[finalData$CCI_precs>50000] <- getmode(finalData$CCI_precs)
   finalData$n <- length(dates)
   finalData$dates <- dates
   finalData$D <- dayLengths
   finalData$height <- heightData[heightData$LeafName==lfName,2]
-  lfMetName <- metHeightNames[which.min(abs(finalData$height - metHeights))]
-  finalData$Tair <- dailyMet[,lfMetName]
+  finalData$Tair <- fittedMet$intercept + finalData$height * fittedMet$slope
+  finalData$par <- exp(fittedParMet$intercept + finalData$height * fittedParMet$slope)
+  finalData$RH <- fittedRHMet$intercept + finalData$height * fittedRHMet$slope
+  finalData$RH[fittedRHMet$R2<0.9] <- fittedRHMet$average[fittedRHMet$R2<0.9]
+  finalData$vpd <- get.vpd(finalData$RH,finalData$Tair)*0.1 #Convert to kPa
+  for(d in 1:finalData$n){
+    if(finalData$par[d]<=0){
+      finalData$par[d] <- 0.001
+    }
+    if(finalData$vpd[d]<=0){
+      finalData$vpd[d] <- 0.001
+    }
+  }
   finalData$CCI_means[seq(which.min(finalData$CCI_means),finalData$n)] <- NA
+  finalData$co2 <- dailyMet$co2
+  finalData$co2_sd <- dailyMet$co2_sd
   
   save(finalData,file=paste0('Data/finalData/',lfName,"_finalData.RData"))
   #plot(dates,finalData$CCI_means,pch=20)
 }
 
+#Organize PhenoCam Data ----
+library(PhenoForecast)
+library(PhenologyBayesModeling)
+library(rjags)
+library(runjags)
+library(suncalc)
+library(rnoaa)
+library(doParallel)
+library(ncdf4)
+source('/projectnb/dietzelab/kiwheel/chlorophyllCycling/load_ERA5.R')
 
+dataDirectory <- "/projectnb/dietzelab/kiwheel/chlorophyllCycling/data/"
+siteData <- read.csv('/projectnb/dietzelab/kiwheel/chlorophyllCycling/allPhenocamDBsitesComplete.csv',header=TRUE)
+s=6 #For bbc1 site
+s=17 #For harvard EMS site
+siteName <- as.character(siteData$siteName[s])
+print(siteName)
+lat <- as.numeric(siteData[s,2])
+long <- as.numeric(siteData[s,3])
+startDate <- (as.Date(siteData[s,7]))
+library(lubridate)
+if(s==17){
+  startDate <- startDate %m+% lubridate::years(1) #Not enough met data for 2009
+}
+
+endDate <- as.character(siteData$endDate[s])
+URL <- as.character(siteData$URL[s])
+URL2 <- as.character(siteData$URL2[s])
+URL3 <- as.character(siteData$URL3[s])
+if(!is.na(URL2)){
+  URL <- c(URL,URL2)
+  if(!is.na(URL3)){
+    URL <- c(URL,URL3)
+  }
+}
+TZ <- as.numeric(siteData[s,6])
+URLs <- URL
+load(file=paste(dataDirectory,siteName,"_phenopixOutputs.RData",sep=""))
+fittedDat=allDat
+ERA5dataFolder <- paste("/projectnb/dietzelab/kiwheel/ERA5/Data/",siteName,"/",sep="")
+
+phenoData <- matrix(nrow=0,ncol=32)
+print(URLs[1])
+for(u in 1:length(URLs)){
+  phenoDataSub <- download.phenocam(URLs[u])
+  phenoData <- rbind(phenoData,phenoDataSub)
+}
+
+##Order and remove duplicate PC data
+phenoData2 <- phenoData[order(phenoData$date),]
+phenoData3 <- phenoData2[!duplicated(phenoData2$date),]
+phenoData <- phenoData3
+
+phenoData <- phenoData[phenoData$date<endDate,]
+p.old <- phenoData$gcc_90
+time.old <-  as.Date(phenoData$date)
+days <- seq(as.Date(startDate),(as.Date(endDate)),"day")
+p <- rep(NA,length(days))
+
+for(i in 1:length(p.old)){
+  p[which(days==time.old[i])] <- p.old[i]
+}
+
+months <- lubridate::month(days)
+years <- lubridate::year(days)
+
+dat2 <- data.frame(dates=days,years=years,months=months,p=p)
+# calFileName <- paste0(siteName,"_",startDate,"_",endDate,"_era5TemperatureMembers.nc")
+# datTairEns <- load_ERA5(ERA5dataFolder=ERA5dataFolder,calFileName=calFileName,TZ_offset=TZ,variable="Tair")
+# datTairEnsDay <- load_ERA5_daytime(ERA5dataFolder=ERA5dataFolder,calFileName=calFileName,TZ_offset=TZ,variable="Tair",lat=lat,long=long)
+# 
+# TairMu <- apply(X=datTairEns,MARGIN=2,FUN=mean)
+# TairPrec <- 1/apply(X=datTairEns,MARGIN=2,FUN=var)
+# dat2$TairMu <- TairMu 
+# dat2$TairPrec <- TairPrec
+# 
+# TairMuDay <- apply(X=datTairEnsDay,MARGIN=2,FUN=mean)
+# TairPrecDay <- 1/apply(X=datTairEnsDay,MARGIN=2,FUN=var)
+# dat2$TairMuDay <- TairMuDay 
+# dat2$TairPrecDay <- TairPrecDay
+
+dayLengths <- numeric()
+
+for(d in 1:length(days)){
+  suntimes <- getSunlightTimes(date=days[d],
+                               lat=lat,lon=long,keep=c("nauticalDawn","nauticalDusk"),
+                               tz = "GMT") #GMT because I only care about difference
+  dayLengths <- c(dayLengths,as.numeric(suntimes$nauticalDusk-suntimes$nauticalDawn))
+}
+
+dat2$D <- dayLengths
+ICsdat <- dat2[as.numeric(format(dat2$dates,"%j"))%in% seq(203,212),] 
+dat2 <- dat2[as.numeric(format(dat2$dates,"%j"))%in% seq(213,335),] #Starting July 1st
+
+#nrowNum <- 365-212
+# nrowNum <- 365-181
+nrowNum <- 335-212
+p <- matrix(nrow=nrowNum,ncol=0)
+# TairMu <- matrix(nrow=nrowNum,ncol=0)
+# TairMuDay <- matrix(nrow=nrowNum,ncol=0)
+D <- matrix(nrow=nrowNum,ncol=0)
+ICs <- matrix(nrow=10,ncol=0)
+# TairPrec <- matrix(nrow=nrowNum,ncol=0)
+# TairPrecDay <- matrix(nrow=nrowNum,ncol=0)
+valNum <- 0
+days2 <- matrix(nrow=nrowNum,ncol=0)
+
+finalYrs <- numeric()
+sofs <- numeric()
+for(i in (lubridate::year(as.Date(dat2$dates[1]))):lubridate::year(as.Date(dat2$dates[length(dat2$dates)]))){
+  subDat <- dat2[lubridate::year(as.Date(dat2$dates))==i,]
+  #valNum <- valNum + 1
+  valNum <- which(fittedDat[,'Year']==i)
+  if(length(valNum)==0){
+    Low <- NA
+    High <- NA
+  }else{
+    Low <- fittedDat[valNum,'Low']
+    High <- fittedDat[valNum,'High']
+  }
+  if(!is.na(Low)){
+    newICs <- scales::rescale(ICsdat[lubridate::year(as.Date(ICsdat$dates))==i,]$p,from=c(Low,High))
+    if(length(na.omit(newICs))>5){
+      newCol <- scales::rescale(subDat$p,to=c(0,1),from=c(Low,High))
+      p <- cbind(p,newCol)
+      ICs <- cbind(ICs,newICs)
+      days2 <- cbind(days2,as.Date(subDat$dates))
+      finalYrs <- c(finalYrs,i)
+      #sofs <- c(sofs,(fittedDat[valNum,'FallStartDay']-212))
+      sofs <- c(sofs,(fittedDat[valNum,'FallStartDay']-212)) ######Change for start if needed
+      # TairMu <- cbind(TairMu,subDat$TairMu)
+      # TairMuDay <- cbind(TairMuDay,subDat$TairMuDay)
+      D <- cbind(D,subDat$D)
+      # TairPrec <- cbind(TairPrec,subDat$TairPrec)
+      # TairPrecDay <- cbind(TairPrecDay,subDat$TairPrecDay)
+    }
+  }
+}
+p[p<0] <- 0
+p[p>0.999] <- 0.999
+ICs[ICs<0] <- 0
+ICs[ICs>0.999] <- 0.999
+
+dataFinal <- list(p=p,years=finalYrs,sofMean=mean(sofs))
+dataFinal$n <- nrowNum
+dataFinal$N <- ncol(dataFinal$p)
+
+
+x1a <- numeric()
+x1b <- numeric()
+for(yr in 1:dataFinal$N){
+  mu <- mean(ICs[,yr],na.rm=TRUE)
+  vr <- var(ICs[,yr],na.rm = TRUE)
+  x1a <- c(x1a,(mu**2-mu**3-mu*vr)/(vr))
+  x1b <- c(x1b,(mu-2*mu**2+mu**3-vr+mu*vr)/(vr))
+}
+
+dataFinal$x1.a <- x1a
+dataFinal$x1.b <- x1b
+
+# dataFinal$TairMu <- TairMu
+# dataFinal$TairPrec <- TairPrec
+# dataFinal$TairMuDay <- TairMuDay
+# dataFinal$TairPrecDay <- TairPrecDay
+dataFinal$D <- D
+
+dataFinal$TowerTair <- matrix(nrow=dataFinal$n,ncol=dataFinal$N)
+dataFinal$co2 <- matrix(nrow=dataFinal$n,ncol=dataFinal$N)
+dataFinal$par <- matrix(nrow=dataFinal$n,ncol=dataFinal$N)
+dataFinal$RH <- matrix(nrow=dataFinal$n,ncol=dataFinal$N)
+
+if(s==6){
+  dailyMet <- read.csv("dailyMetPhenoCam.csv")
+  for(yr in 1:dataFinal$N){
+    dataFinal$TowerTair[,yr] <- dailyMet[lubridate::year(dailyMet$date)==dataFinal$years[yr],'airt.ac'][1:dataFinal$n]
+    dataFinal$co2[,yr] <- dailyMet[lubridate::year(dailyMet$date)==dataFinal$years[yr],'co2'][1:dataFinal$n]
+    dataFinal$par[,yr] <- dailyMet[lubridate::year(dailyMet$date)==dataFinal$years[yr],'parac'][1:dataFinal$n]
+    dataFinal$RH[,yr] <- dailyMet[lubridate::year(dailyMet$date)==dataFinal$years[yr],'rh.ac'][1:dataFinal$n]
+    
+  }
+}else if(s==17){
+  dailyMet <- read.csv("dailyMetPhenoCam_harvardEMS.csv")
+  for(yr in 1:dataFinal$N){
+    dataFinal$TowerTair[,yr] <- dailyMet[lubridate::year(dailyMet$date)==dataFinal$years[yr],'ta.27.9m'][1:dataFinal$n]
+    dataFinal$co2[,yr] <- dailyMet[lubridate::year(dailyMet$date)==dataFinal$years[yr],'co2'][1:dataFinal$n]
+    dataFinal$par[,yr] <- dailyMet[lubridate::year(dailyMet$date)==dataFinal$years[yr],'par.29'][1:dataFinal$n]
+    dataFinal$RH[,yr] <- dailyMet[lubridate::year(dailyMet$date)==dataFinal$years[yr],'rh.27.9m'][1:dataFinal$n]
+    
+  }
+}
+
+while(sum(is.na(dataFinal$TowerTair))>0){
+  dataFinal$TowerTair[is.na(dataFinal$TowerTair)] <- dataFinal$TowerTair[which(is.na(dataFinal$TowerTair))-1]
+}
+while(sum(is.na(dataFinal$RH))>0){
+  dataFinal$RH[is.na(dataFinal$RH)] <- dataFinal$RH[which(is.na(dataFinal$RH))-1]
+}
+
+while(sum(is.na(dataFinal$par))>0){
+  dataFinal$par[is.na(dataFinal$par)] <- dataFinal$par[which(is.na(dataFinal$par))-1]
+}
+dataFinal$vpd <- get.vpd(dataFinal$RH,dataFinal$TowerTair)*0.1 #Convert to kPa
+save(dataFinal,file=paste0(finalDataDirectory,siteName,"_dataFinal.RData"))
 
 
 

@@ -1,0 +1,50 @@
+---
+title: "Carbon and Phenology Manuscript Code"
+author: "Kathryn Wheeler"
+date: "5/19/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+General Functions:
+sharedVariables.R
+metFunctions.R
+generalFunctions.R
+
+Create Met Data:
+investigatingMet.R
+metFunctions.R
+
+Make Initial Leaf Data Objects
+OrganizeData.R
+
+Estimate Transition Dates for Leaves
+estimateLeafSOStransitions.R #Creates a new leaf data object 
+
+Fit Licor Response Curves
+matchLicorWithCCI.R
+fitResponseCurves_LicorData.R
+fitA.R 
+runLicorIter.R
+
+Estimate Photosynthate 
+estimateStomatalSlope.R
+estimatePhotosynthate.R
+
+Define Models 
+generalModels.R
+
+Run Models and calculate DICs:
+createPhenoCamModels.R
+combineLeafSpeciesDataObjects.R
+createLeafModels.R
+
+
+Model Comparison:
+modelComparison.R
+
+
+

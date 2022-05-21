@@ -3,14 +3,11 @@ library(PhenologyBayesModeling)
 library(rjags)
 library(runjags)
 library(doParallel)
-dataDirectory <- "Data/finalData/"
-leafNames <- c("B1A","B1B","B1C","B1D","B1E","B1F",
-               "B2A","B2B","B2C","B2D","B2E","B2F",
-               "B3A","B3B","B3C","B3D","B3E","B3F",
-               "O1A","O1B","O1C","O1D","O1E","O1F",
-               "O2A","O2B","O2C","O2D","O2E","O2F",
-               "O3A","O3B","O3C","O3D","O3E","O3F",
-               "O4A","O4B","O4C","O4D","O4E","O4F")
+library(scales)
+source('generalModels.R')
+source('sharedVariables.R')
+source('generalFunctions.R')
+#Fit Transitions ----
 
 variables <- c("mS","mF","y[1]","k")
 nchain=5
@@ -81,20 +78,16 @@ for(l in 1:length(leafNames)){
   save(var.burn,file=outputFileName)
 }
 
-
+#Plot and Save Transitions with Data Objects ----
 library(PhenoForecast)
 library(PhenologyBayesModeling)
 library(rjags)
 library(runjags)
-library(doParallel)
-dataDirectory <- "Data/finalData/"
-leafNames <- c("B1A","B1B","B1C","B1D","B1E","B1F",
-               "B2A","B2B","B2C","B2D","B2E","B2F",
-               "B3A","B3B","B3C","B3D","B3E","B3F",
-               "O1A","O1B","O1C","O1D","O1E","O1F",
-               "O2A","O2B","O2C","O2D","O2E","O2F",
-               "O3A","O3B","O3C","O3D","O3E","O3F",
-               "O4A","O4B","O4C","O4D","O4E","O4F")
+library(scales)
+source('generalModels.R')
+source('sharedVariables.R')
+source('generalFunctions.R')
+
 changepointModel <- function(y1,mS,mF,k,xseq){
   yseq <- y1
   for(x in xseq){
@@ -111,7 +104,7 @@ pdf(file="LeafTransitions.pdf",height=5,width=6)
 for(l in 1:length(leafNames)){
   lfName <- leafNames[l]
   print(lfName)
-  load(paste0('Data/finalData/',lfName,"_finalData.RData"))
+  load(paste0(finalDataDirectory,lfName,"_finalData.RData"))
   
   outputFileName <- paste0("modelFits/",lfName,"_estimatedTransition_varBurn.RData")
   load(outputFileName)
@@ -131,11 +124,13 @@ for(l in 1:length(leafNames)){
   ci <- apply(ycred,2,quantile,c(0.025,0.5,0.975))
   tran.ci <- quantile(k,c(0.025,0.5,0.975))
   plot(days,finalData$CCI_means,pch=20,main=lfName,ylab="Rescaled CCI",xlab="Time")
-  ecoforecastR::ciEnvelope(days,ci[1,],ci[3,],col=col.alpha("lightblue",0.5))
+  ecoforecastR::ciEnvelope(days,ci[1,],ci[3,],col=alpha("lightblue",0.5))
   points(finalData$dates,finalData$CCI_means,pch=20)
   abline(v=tran.ci[2],col="blue")
   abline(v=tran.ci[1],col="blue",lty=2)
   abline(v=tran.ci[3],col="blue",lty=2)
+  finalData$tran <- c(tran.ci,mean(k))
+  save(file=paste0(finalDataDirectory,lfName,"_finalData_withTran.RData"),finalData)
   
 }
 dev.off()

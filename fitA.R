@@ -2,6 +2,7 @@
 ##' @title fitA
 ##' @author Mike Dietze
 ##' @author Xiaohui Feng
+##' @author Kathryn Wheeler
 ##' @export
 ##' 
 ##' @param flux.data  data.frame of Licor data, concatenated by rows, and with a leading column 'fname' that is used to count the number of curves and match to covariates
@@ -28,16 +29,22 @@ fitA <- function(flux.data, cov.data = NULL, model = NULL,hiearchical) {
                   n.iter = 5000, match = "fname")
   }
   if(hiearchical){
-    out.variables <- c("r0", "vmax0", "alpha0", "Jmax0", "cp0", "tau", "pmean","pA","Vleaf","Aleaf")
+    out.variables <- c("r0", "vmax0", "alpha0", "Jmax0", "cp0", "tau", "pmean","pA","Vleaf","Aleaf","Jleaf","rleaf",'cleaf')
   }else{
     out.variables <- c("r0", "Jmax0", "cp0", "tau","pA","vmax0","alpha0","pmean")
   }
-  print(out.variables)
+
   
   a.fixed <- model$a.fixed
   a.random <- model$a.random
   V.fixed <- model$V.fixed
   V.random <- model$V.random
+  J.fixed <- model$J.fixed
+  J.random <- model$J.random
+  r.fixed <- model$r.fixed
+  r.random <- model$r.random
+  c.fixed <- model$c.fixed
+  c.random <- model$c.random
   if (is.null(model$match)) {
     model$match <- "fname"
   }
@@ -74,6 +81,25 @@ fitA <- function(flux.data, cov.data = NULL, model = NULL,hiearchical) {
     XV      <- t(t(XV) - Vcenter)
   }
   
+  ## Jmax design matrix
+  if (is.null(J.fixed)) {
+    XJ <- NULL
+  } else {
+    if (is.null(cov.data)) {
+      print("Jmax formula provided but covariate data is absent:", J.fixed)
+    }
+    if (length(grep("~", J.fixed)) == 0) {
+      J.fixed <- paste("~", J.fixed)
+    }
+    XJ      <- with(cov.data, model.matrix(formula(J.fixed)))
+    XJ.cols <- colnames(XJ)
+    XJ.cols <- XJ.cols[XJ.cols != "(Intercept)"]
+    XJ      <- as.matrix(XJ[, XJ.cols])
+    colnames(XJ) <- XJ.cols
+    Jcenter <- apply(XJ, 2, mean, na.rm = TRUE)
+    XJ      <- t(t(XJ) - Jcenter)
+  }
+  
   ## alpha design matrix
   if (is.null(a.fixed)) {
     Xa <- NULL
@@ -86,6 +112,33 @@ fitA <- function(flux.data, cov.data = NULL, model = NULL,hiearchical) {
     Xa      <- as.matrix(Xa[, -which(colnames(Xa) == "(Intercept)")])
     acenter <- apply(Xa, 2, mean, na.rm = TRUE)
     Xa      <- t(t(Xa) - acenter)
+  }
+  ## cp0 design matrix
+  if (is.null(c.fixed)) {
+    Xc <- NULL
+  } else {
+    if (is.null(cov.data)) {
+      print("cp0 formula provided but covariate data is absent:", c.fixed)
+    }
+    c.fixed <- ifelse(length(grep("~", c.fixed)) == 0, paste("~", c.fixed), c.fixed)
+    Xc      <- with(cov.data, model.matrix(formula(c.fixed)))
+    Xc      <- as.matrix(Xc[, -which(colnames(Xc) == "(Intercept)")])
+    ccenter <- apply(Xc, 2, mean, na.rm = TRUE)
+    Xc      <- t(t(Xc) - ccenter)
+  }
+  
+  ## r0 design matrix
+  if (is.null(r.fixed)) {
+    Xr <- NULL
+  } else {
+    if (is.null(cov.data)) {
+      print("r0 formula provided but covariate data is absent:", r.fixed)
+    }
+    r.fixed <- ifelse(length(grep("~", r.fixed)) == 0, paste("~", r.fixed), r.fixed)
+    Xr      <- with(cov.data, model.matrix(formula(r.fixed)))
+    Xr      <- as.matrix(Xr[, -which(colnames(Xr) == "(Intercept)")])
+    rcenter <- apply(Xr, 2, mean, na.rm = TRUE)
+    Xr      <- t(t(Xr) - rcenter)
   }
   
   ## Define JAGS model
@@ -129,17 +182,38 @@ fitA <- function(flux.data, cov.data = NULL, model = NULL,hiearchical) {
   #RLEAF.V  for(i in 1:nrep){                  
   #RLEAF.V   Vleaf[i]~dnorm(0,tau.Vleaf)
   #RLEAF.V  }
+  ## Jmax BETAS
+  #RLEAF.J  tau.Jleaf~dgamma(0.1,0.1)          ## add random leaf effects
+  #RLEAF.J  for(i in 1:nrep){                  
+  #RLEAF.J   Jleaf[i]~dnorm(0,tau.Jleaf)
+  #RLEAF.J  }
   ## alpha BETAs
   #RLEAF.A  tau.Aleaf~dgamma(0.1,0.1)
   #RLEAF.A  for(i in 1:nrep){                  
   #RLEAF.A   Aleaf[i]~dnorm(0,tau.Aleaf)
   #RLEAF.A  }
+  
+  ## r0 BETAs
+  #RLEAF.r  tau.rleaf~dgamma(0.1,0.1)
+  #RLEAF.r  for(i in 1:nrep){                  
+  #RLEAF.r   rleaf[i]~dnorm(0,tau.rleaf)
+  #RLEAF.r  }
+  
+  ## cp0 BETAs
+  #RLEAF.c  tau.cleaf~dgamma(0.1,0.1)
+  #RLEAF.c  for(i in 1:nrep){                  
+  #RLEAF.c   cleaf[i]~dnorm(0,tau.cleaf)
+  #RLEAF.c  }
+  
   for(i in 1:n) {
-  r[i]  <- r0 ##B01* exp(r.c - r.H/R/T[i])
-  cp[i] <- cp0 ##B01* exp(cp.c - cp.H/R/T[i])/cp.ref
+  r0.refT[i] <- r0 #rFORMULA
+  r[i]  <- r0.refT[i] ##B01* exp(r.c - r.H/R/T[i])
+  cp0.refT[i] <- cp0 #cFORMULA
+  cp[i] <- cp0.refT[i] ##B01* exp(cp.c - cp.H/R/T[i])/cp.ref
   Kc.T[i] <- Kc ##B01* exp(Kc.c - Kc.H/R/T[i])/Kc.ref
   Ko.T[i] <- Ko ##B01* exp(Ko.c - Ko.H/R/T[i])/Ko.ref
-  Jmax[i] <- Jmax0 ##J04 * exp(-(T[i]-To)*(T[i]-To)/(Omega*Omega))
+  Jmax.refT[i] <- Jmax0 #JFORMULA
+  Jmax[i] <- Jmax.refT[i] ##J04 * exp(-(T[i]-To)*(T[i]-To)/(Omega*Omega))
   alpha[i] <- alpha0 #AFORMULA
   al[i]<-(alpha[i]*q[i]/(sqrt(1+(alpha[i]*alpha[i]*q[i]*q[i])/(Jmax[i]*Jmax[i]))))*(pi[i]-cp[i])/(4*pi[i]+8*cp[i])    ## electron transport limited without covariates
   vmax.refT[i] <- vmax0 #VFORMULA
@@ -220,6 +294,27 @@ fitA <- function(flux.data, cov.data = NULL, model = NULL,hiearchical) {
     my.model <- sub(pattern = "#VFORMULA", Vformula, my.model)
   } 
   
+  ## Jmax Formulas
+  Jformula <- NULL
+  if ("leaf" %in% J.random) {
+    Jformula <- " + Jleaf[rep[i]]"
+    my.model <- gsub(pattern = "#RLEAF.J", " ", my.model)
+    out.variables <- c(out.variables, "tau.Jleaf")
+  }
+  
+  if (!is.null(XJ)) {
+    Jnames <- gsub(" ", "_", colnames(XJ))
+    Jformula <- paste(Jformula,
+                      paste0("+ betaJ", Jnames, "*XJ[rep[i],", seq_len(ncol(XJ)), "]", collapse = " "))
+    Jpriors <- paste0("     betaJ", Jnames, "~dnorm(0,0.001)", collapse = "\n")
+    my.model <- sub(pattern = "## Jmax BETAS", Jpriors, my.model)
+    mydat[["XJ"]] <- XJ
+    out.variables <- c(out.variables, paste0("betaJ", Jnames))
+  }
+  if (!is.null(Jformula)) {
+    my.model <- sub(pattern = "#JFORMULA", Jformula, my.model)
+  } 
+  
   ## alpha Formulas
   Aformula <- NULL
   if ("leaf" %in% a.random) {
@@ -241,6 +336,48 @@ fitA <- function(flux.data, cov.data = NULL, model = NULL,hiearchical) {
     my.model <- sub(pattern = "#AFORMULA", Aformula, my.model)
   }
   
+  ## cp0 Formulas
+  cformula <- NULL
+  if ("leaf" %in% c.random) {
+    cformula <- " + cleaf[rep[i]]"
+    my.model <- gsub(pattern = "#RLEAF.c", "", my.model)
+    out.variables <- c(out.variables, "tau.cleaf")
+  }
+  
+  if (!is.null(Xc)) {
+    cnames <- gsub(" ", "_", colnames(Xc))
+    cformula <- paste(cformula, paste0("+ betac", cnames, "*Xc[rep[i],", 1:ncol(Xc), 
+                                       "]", collapse = " "))
+    cpriors <- paste0("betac", cnames, "~dnorm(0,0.001)", collapse = "\n")
+    my.model <- sub(pattern = "## cp0 BETAs", cpriors, my.model)
+    mydat[["Xc"]] <- Xc
+    out.variables <- c(out.variables, paste0("betac", cnames))
+  }
+  if (!is.null(cformula)) {
+    my.model <- sub(pattern = "#cFORMULA", cformula, my.model)
+  }
+  
+  ## r0 Formulas
+  rformula <- NULL
+  if ("leaf" %in% r.random) {
+    rformula <- " + rleaf[rep[i]]"
+    my.model <- gsub(pattern = "#RLEAF.r", "", my.model)
+    out.variables <- c(out.variables, "tau.rleaf")
+  }
+  
+  if (!is.null(Xr)) {
+    rnames <- gsub(" ", "_", colnames(Xr))
+    rformula <- paste(rformula, paste0("+ betar", rnames, "*Xr[rep[i],", 1:ncol(Xr), 
+                                       "]", collapse = " "))
+    rpriors <- paste0("betar", rnames, "~dnorm(0,0.001)", collapse = "\n")
+    my.model <- sub(pattern = "## r0 BETAs", rpriors, my.model)
+    mydat[["Xr"]] <- Xr
+    out.variables <- c(out.variables, paste0("betar", rnames))
+  }
+  if (!is.null(rformula)) {
+    my.model <- sub(pattern = "#rFORMULA", rformula, my.model)
+  }
+  
   ## Define initial conditions
   init <- list()
   init[[1]] <- list(r0 = 1.2, vmax0 = 39, alpha0 = 0.25, tau = 10, cp0 = 6, Jmax0 = 80)  ## tau.Vleaf=30,beta1=4, beta2=1,beta5=3,tau.Vmon=10,tpu=10,
@@ -249,11 +386,12 @@ fitA <- function(flux.data, cov.data = NULL, model = NULL,hiearchical) {
   init[[4]] <- list(r0 = 2, vmax0 = 60, alpha0 = 0.28, tau = 20, cp0 = 5, Jmax0 = 60) 
   init[[5]] <- list(r0 = 1.2, vmax0 = 39, alpha0 = 0.25, tau = 10, cp0 = 6, Jmax0 = 80)
 ##tau.Vleaf=100,beta1=1,beta2=2,beta5=2,tau.Vmon=3,tpu=20,
+  print(out.variables)
   print(my.model)
   mc3 <- jags.model(file = textConnection(my.model), data = mydat, inits = init, n.chains = 5,n.adapt = 3000)
   
-  mc3.out <- coda.samples(model = mc3, variable.names = out.variables, n.iter = model$n.iter)
-  out.burn <- runLicorIter(j.model=mc3,variableNames=out.variables,
+  #mc3.out <- coda.samples(model = mc3, variable.names = out.variables, n.iter = model$n.iter)
+  out <- runLicorIter(j.model=mc3,variableNames=out.variables,
                                   baseNum = 50000,iterSize = 50000,effSize = 5000)
   
   ## split output
@@ -263,13 +401,6 @@ fitA <- function(flux.data, cov.data = NULL, model = NULL,hiearchical) {
   # chain.col   <- which(colnames(mfit) == "CHAIN")
   # out$predict <- mat2mcmc.list(mfit[, c(chain.col, pred.cols)])
   # out$params  <- mat2mcmc.list(mfit[, -pred.cols])
-  if(typeof(out.burn)!=typeof(FALSE)){
-    out.mat <- as.matrix(out.burn$params)
-    thinAmount <- round(nrow(out.mat)/5000,digits=0)
-    out.burn2 <- list()
-    out.burn2$params <- window(out.burn$params,thin=thinAmount)
-    out.burn2$predict <- window(out.burn$predict,thin=thinAmount)
-    out.burn <- out.burn2
-  }
-  return(out.burn)
+  out <- thinMCMCOutput(out)
+  return(out)
 } # fitA

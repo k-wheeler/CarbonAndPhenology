@@ -1,94 +1,131 @@
 library(suncalc)
-lat <- 42.5351
-long <- -72.1744
-#Read in met data
-dates <- seq(as.Date('20-01'),as.Date('2021-12-31'),'day')
-dayLengths <- numeric()
-sunRises <- rep(Sys.time(),length(dates))
-sunSets <- rep(Sys.time(),length(dates))
-for(d in 1:length(dates)){
-  suntimes <- getSunlightTimes(date=dates[d],
-                               lat=lat,lon=long,keep=c("nauticalDawn","nauticalDusk"),
-                               tz = "GMT") #GMT because I only care about difference
-  dayLengths <- c(dayLengths,as.numeric(suntimes$nauticalDusk-suntimes$nauticalDawn))
-  sunRises[d] <- (suntimes$nauticalDawn)
-  sunSets[d] <- (suntimes$nauticalDusk)
+source('metFunctions.R')
+source('sharedVariables.R')
+
+##Read in and calculate daily met for full bbc1 (HWD tower) PhenoCam time-series (fall only) ----
+dates <- seq(as.Date('2016-01-01'),as.Date('2020-12-31'),'day')
+dates <- dates[format(dates,"%j")%in%seq(213,335)]
+dailyMet <- calculateDailyMet(dates)
+write.csv(dailyMet,file="dailyMetPhenoCam.csv",quote=FALSE,row.names = FALSE)
+
+##Read in and calculate daily met for full harvard (EMS tower) PhenoCam time-series (fall only) ----
+dates <- seq(as.Date('2010-01-01'),as.Date('2020-12-31'),'day')
+dates <- dates[format(dates,"%j")%in%seq(213,335)]
+latEMS=42.5378
+longEMS=-72.1715
+dailyMet <- calculateDailyMet(dates,isEMS=TRUE,lat = latEMS,long = longEMS)
+write.csv(dailyMet,file="dailyMetPhenoCam_harvardEMS.csv",quote=FALSE,row.names = FALSE)
+
+#Read in and calculate met data for fall field season only ----
+dates <- seq(as.Date('2021-08-01'),as.Date('2021-12-01'),'day')
+dailyMet <- calculateDailyMet(dates)
+write.csv(dailyMet,file="dailyMetFieldSeasonOnly.csv",quote=FALSE,row.names = FALSE)
+
+#Calculate Vertical Profile of Temperature ----
+allMat <- cbind(dailyMet$date,dailyMet$airt.ac,dailyMet$airt.mid,dailyMet$airt.low)
+metHeightsM <- metHeights[1:3]
+
+pdfName <- "dailyMetMeasurements.pdf"
+pdf(file=pdfName,height=8,width=10)
+par(mfcol=c(2,2))
+dtes <- seq(as.Date("2021-08-01"),as.Date("2021-12-01"),"day")
+fittedMet <- as.data.frame(matrix(ncol=4,nrow=length(dtes)))
+colnames(fittedMet) <- c("date","intercept","slope","R2")
+fittedMet$date <- rep(Sys.Date(),nrow(fittedMet))
+for(d in 1:length(dtes)){
+  dte <- dtes[d]
+  #dte <- as.Date("2021-10-01")
+  dayMat <- allMat[allMat[,1]==dte,2:4]
+  plot(metHeightsM[1:3],dayMat,pch=20,main=(dte),xlim=c(0,3000),ylab="Temperature",xlab="Height (m)")
+  
+  mdl <- lm(dayMat~metHeightsM)
+  sm <- summary(mdl)
+  abline(mdl,col="red")
+  text(500,dayMat[3]+0.2,paste("R2:",round(sm$r.squared,digits=3)))
+  fittedMet$date[d] <- dte
+  fittedMet$R2[d] <- sm$r.squared
+  fittedMet$slope[d] <- mdl$coefficients[2]
+  fittedMet$intercept[d] <- mdl$coefficients[1]
 }
+plot(density(fittedMet$R2),main="Density of R^2s")
+plot(fittedMet$date,fittedMet$R2,pch=20,xlab="Date",ylab="R^2",main="R^2 Over Time")
+plot(fittedMet$date,fittedMet$slope,pch=20,xlab="Date",ylab="Slope",main="Slope Over Time")
+plot(fittedMet$date,fittedMet$intercept,pch=20,xlab="Date",ylab="Intercept",main="Intercept Over Time")
+dev.off()
+write.csv(fittedMet,file="DailyDaytimeVerticalTemperatureProfiles.csv",quote=FALSE,row.names = FALSE)
 
-metHeights <- c(28,18,9,1)*100 #Heights in mm of met sensor locations
-metHeightNames <- c('airt.ac','airt.mid','airt.low','airt.us1')
-metDat <- read.csv('Data/hf282-01-hdwd-tower.csv',stringsAsFactors = FALSE)
+#Calculate Vertical Profile of PAR ----
+allMat <- cbind(dailyMet$date,dailyMet$parac,dailyMet$parmid,dailyMet$parlow,dailyMet$parus1)
+metHeightsM <- metHeights[1:4]
 
-subMet <- metDat[lubridate::date(metDat$datetime)%in%dates,
-                 c('datetime','airt.ac','airt.mid','airt.low')]
-subMet$datetime <- stringr::str_replace(subMet$datetime,"T"," ")
-subMet$datetime <- as.POSIXct(subMet$datetime,format='%Y-%m-%d %H:%M')
-subMet$date <- lubridate::date(subMet$datetime)
-subMet$airt.ac <- as.numeric(subMet$airt.ac)
-subMet$airt.mid <- as.numeric(subMet$airt.mid)
-subMet$airt.low <- as.numeric(subMet$airt.low)
-dailyMet <- as.data.frame(matrix(nrow=length(dates),ncol=5))
-colnames(dailyMet) <- c('date','airt.ac','airt.mid','airt.low','airt.us1')
-dailyMet$date <- dates
-#subMet$date <- as.Date(subMet$date)
-splitMet <- split(subMet,subMet$date)
-splitDates <- as.Date(names(splitMet))
-for(d in 1:length(dates)){
-  ind <- which(splitDates==dates[d])
-  if(length(ind)>0){
-    dateMet <- splitMet[ind][[1]]
-    dayMet <- dateMet[dateMet$datetime>sunRises[d]&dateMet$datetime<sunSets[d],]
-    dailyMet$airt.ac[d] <- mean(dayMet$airt.ac,na.rm=TRUE)
-    dailyMet$airt.mid[d] <- mean(dayMet$airt.mid,na.rm=TRUE)
-    dailyMet$airt.low[d] <- mean(dayMet$airt.low,na.rm=TRUE)
-  }
+pdfName <- "dailyMetMeasurements_par.pdf"
+pdf(file=pdfName,height=8,width=10)
+par(mfcol=c(2,2))
+dtes <- seq(as.Date("2021-08-01"),as.Date("2021-12-01"),"day")
+fittedMet <- as.data.frame(matrix(ncol=4,nrow=length(dtes)))
+colnames(fittedMet) <- c("date","intercept","slope","R2")
+fittedMet$date <- rep(Sys.Date(),nrow(fittedMet))
+for(d in 1:length(dtes)){
+  dte <- dtes[d]
+  #dte <- as.Date("2021-10-01")
+  dayMat <- allMat[allMat[,1]==dte,2:5]
+  plot(metHeightsM[1:4],log(dayMat),pch=20,main=(dte),xlim=c(0,3000),ylab="Log(PAR)",xlab="Height (m)")
+  
+  mdl <- lm(log(dayMat)~metHeightsM)
+  sm <- summary(mdl)
+  abline(mdl,col="red")
+  text(500,log(dayMat[3])+0.2,paste("R2:",round(sm$r.squared,digits=3)))
+  fittedMet$date[d] <- dte
+  fittedMet$R2[d] <- sm$r.squared
+  fittedMet$slope[d] <- mdl$coefficients[2]
+  fittedMet$intercept[d] <- mdl$coefficients[1]
+  plot(metHeightsM[1:4],(dayMat),pch=20,main=(dte),xlim=c(0,3000),ylab="PAR",xlab="Height (m)")
+  lines(seq(0,3000),exp(fittedMet$slope[d] *seq(0,3000)+fittedMet$intercept[d]))
+  
 }
+plot(density(fittedMet$R2),main="Density of R^2s")
+plot(fittedMet$date,fittedMet$R2,pch=20,xlab="Date",ylab="R^2",main="R^2 Over Time")
+plot(fittedMet$date,fittedMet$slope,pch=20,xlab="Date",ylab="Slope",main="Slope Over Time")
+plot(fittedMet$date,fittedMet$intercept,pch=20,xlab="Date",ylab="Intercept",main="Intercept Over Time")
+dev.off()
+write.csv(fittedMet,file="DailyDaytimeVerticalParProfiles.csv",quote=FALSE,row.names = FALSE)
 
-metDat2 <- read.csv('Data/hf282-02-hdwd-tower-understory.csv',stringsAsFactors = FALSE)
-subMet2 <- metDat2[lubridate::date(metDat2$datetime)%in%dates,
-                   c('datetime','airt.us1')]
-subMet2$date <- lubridate::date(subMet2$datetime)
-subMet2$datetime <- stringr::str_replace(subMet2$datetime,"T"," ")
-subMet2$datetime <- as.POSIXct(subMet2$datetime,format='%Y-%m-%d %H:%M')
-splitMet <- split(subMet2,subMet2$date)
-splitDates <- as.Date(names(splitMet))
-for(d in 1:length(dates)){
-  ind <- which(splitDates==dates[d])
-  if(length(ind)>0){
-    dateMet <- splitMet[ind][[1]]
-    dayMet <- dateMet[dateMet$datetime>sunRises[d]&dateMet$datetime<sunSets[d],]
-    dailyMet$airt.us1[d] <- mean(dayMet$airt.us1)
-  } 
+#Calculate Vertical Profile of Relative Humidity ----
+allMat <- cbind(dailyMet$date,dailyMet$rh.ac,dailyMet$rh.mid,dailyMet$rh.low)
+metHeightsM <- metHeights[1:3]
+
+pdfName <- "dailyMetMeasurements_rh.pdf"
+pdf(file=pdfName,height=8,width=10)
+par(mfcol=c(2,2))
+dtes <- seq(as.Date("2021-08-01"),as.Date("2021-12-01"),"day")
+fittedMet <- as.data.frame(matrix(ncol=6,nrow=length(dtes)))
+colnames(fittedMet) <- c("date","intercept","slope","R2","average","var")
+fittedMet$date <- rep(Sys.Date(),nrow(fittedMet))
+for(d in 1:length(dtes)){
+  dte <- dtes[d]
+  #dte <- as.Date("2021-10-01")
+  dayMat <- allMat[allMat[,1]==dte,2:4]
+  plot(metHeightsM[1:3],dayMat,pch=20,main=(dte),xlim=c(0,3000),ylab="Daily Average RH (%)",xlab="Height (cm)")
+  
+  mdl <- lm(dayMat~metHeightsM)
+  sm <- summary(mdl)
+  abline(mdl,col="red")
+  text(500,dayMat[1]+0.2,paste("R2:",round(sm$r.squared,digits=3)))
+  fittedMet$date[d] <- dte
+  fittedMet$R2[d] <- sm$r.squared
+  fittedMet$slope[d] <- mdl$coefficients[2]
+  fittedMet$intercept[d] <- mdl$coefficients[1]
+  fittedMet$average[d] <- mean(dayMat,na.rm=TRUE)
+  fittedMet$var[d] <- var(dayMat,na.rm=TRUE)
+  
 }
+plot(density(fittedMet$R2),main="Density of R^2s")
+plot(fittedMet$date,fittedMet$R2,pch=20,xlab="Date",ylab="R^2",main="R^2 Over Time")
+plot(fittedMet$date,fittedMet$slope,pch=20,xlab="Date",ylab="Slope",main="Slope Over Time")
+plot(fittedMet$date,fittedMet$intercept,pch=20,xlab="Date",ylab="Intercept",main="Intercept Over Time")
+plot(fittedMet$var,fittedMet$R2,pch=20,xlab="Variance in RH",ylab="R^2",main="R^2 vs. Variance in RH")
+abline(h=0.8,col="red",lwd=2)
+plot(fittedMet$average,fittedMet$R2,pch=20,xlab="Average RH",ylab="R^2",main="R^2 vs. Average RH")
+dev.off()
+write.csv(fittedMet,file="DailyDaytimeVerticalRHProfiles.csv",quote=FALSE,row.names = FALSE)
 
-load("Data/bbc1_dataFinal_includeJuly.RData")
-#dataFinal$TairMuDay[,dataFinal$N]
-
-plot(dates,dailyMet$airt.ac,pch=20,ylim=c(-10,30),col="#0868ac",cex=2,xlab="Date",ylab="Tair (C)",main="Average Day Time Temperature")
-points(dates,dailyMet$airt.mid,pch=20,col=scales::alpha("#43a2ca"),cex=2)
-points(dates,dailyMet$airt.low,pch=20,col=scales::alpha("#7bccc4"),cex=2)
-points(dates,dailyMet$airt.us1,pch=20,col=scales::alpha("#bae4bc"),cex=2)
-#points(dates,dataFinal$TairMuDay[,dataFinal$N],pch=20,cex=2,col="red")
-legend('bottomleft',legend=metHeights,col=c("#0868ac","#43a2ca","#7bccc4","#bae4bc"),pch=rep(20,4),cex=1.5)
-
-plot(dates,dailyMet$airt.ac-dailyMet$airt.mid,pch=20)
-abline(h=0,col="gray",lty=2)
-
-plot(dates,dailyMet$airt.mid-dailyMet$airt.low,pch=20)
-abline(h=0,col="gray",lty=2)
-
-plot(dates,dailyMet$airt.low-dailyMet$airt.us1,pch=20)
-abline(h=0,col="gray",lty=2)
-
-plot(dates,dailyMet$airt.ac-dailyMet$airt.us1,pch=20)
-abline(h=0,col="gray",lty=2)
-abline(v=as.Date("2019-01-01"),col="red")
-
-allDat <- merge(subMet,subMet2,'datetime')
-plot(allDat$datetime,allDat$airt.ac-allDat$airt.us1,pch=20,cex=0.25,xlab="Time",ylab="Difference",
-     main="Difference in Temperature Between Levels")
-#abline(h=0,col="gray",lty=2,lwd=2)
-
-points(allDat$datetime,allDat$airt.ac-allDat$airt.low,pch=20,cex=0.25,col=scales::alpha("cyan",0.5))
-abline(h=0,col="red",lty=2,lwd=3)
-legend('bottomleft',legend=c("28m - 1m","28m - 9m"),col=c("black","cyan"),pch=rep(20,2))
