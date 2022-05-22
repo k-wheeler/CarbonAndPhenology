@@ -42,3 +42,6 @@ combinations <- as.data.frame(rbind(
   c('GPP',FALSE,FALSE,TRUE)
 ))
 colnames(combinations) <- c("Cov","missingYear","excludePostSOS","Addition")
+
+
+harvardSOStransDOYs <- 279.03+c(-1.21,-0.71,-3.61,0.09,0.89,1.39,0.71,1.95,0.81,-0.92,0.03)

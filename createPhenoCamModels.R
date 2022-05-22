@@ -14,12 +14,13 @@ options(stringsAsFactors=FALSE)
 calculateDIC <- TRUE
 c <- 17
 
-n.cores <- 3
-registerDoParallel(cores=n.cores)
+# n.cores <- 3
+# registerDoParallel(cores=n.cores)
 
 #modelVersion <- "Tair_D"
 
-foreach(c=1:nrow(combinations)) %dopar% {
+#foreach(c=1:nrow(combinations)) %dopar% {
+for(c in 1:nrow(combinations)){
   
   missingYear <- combinations$missingYear[c]
   excludePostSOS <- combinations$excludePostSOS[c]
@@ -105,11 +106,13 @@ foreach(c=1:nrow(combinations)) %dopar% {
   if(calculateDIC){
     
     if(file.exists(outputFileName)){
+      if(!file.exists(dicFileName)){
       print("Calculating DIC")
       load(outputFileName)
       var.sum <- summary(out.burn$params)
       DIC <- dic.samples(j.model,n.iter = var.sum$end)
       save(DIC,file=dicFileName)
+      }
     }
   }else{
     print("Fitting Model")

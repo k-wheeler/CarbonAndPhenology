@@ -10,8 +10,8 @@ library(runjags)
 library(PEcAn.photosynthesis)#From: https://github.com/PecanProject/pecan/tree/develop/modules/photosynthesis/R
 
 hiearchical <- TRUE
-fixedCCIeffect <- FALSE
-treeSpecies <- "beech"
+fixedCCIeffect <- TRUE
+treeSpecies <- "oak"
 outputFileName <- paste0('LicorFits/',treeSpecies,"_QAQC_August_allRE_LicorResponseCurve_varBurn.RData")
 if(treeSpecies=="oak"){
   Allfiles <- paste0(LicorDataDirectory,intersect(dir(path=LicorDataDirectory,pattern="-O"),

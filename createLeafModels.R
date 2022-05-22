@@ -9,15 +9,17 @@ source('sharedVariables.R')
 source('generalFunctions.R')
 source('metFunctions.R')
 options(stringsAsFactors=FALSE)
-species="oak"
-calculateDIC <- FALSE
-c=3
+species="beech"
+calculateDIC <- TRUE
+c=6
+
 n.cores <- 8
 registerDoParallel(cores=n.cores)
 
 #modelVersion <- "Tair_D"
 
 foreach(c=1:nrow(combinations)) %dopar% {
+#for(c in 1:nrow(combinations)){
   missingLeaf <- combinations$missingYear[c]
   excludePostSOS <- combinations$excludePostSOS[c]
   modelVersion <- combinations$Cov[c]
@@ -76,7 +78,7 @@ foreach(c=1:nrow(combinations)) %dopar% {
     inputFileName <- paste0("modelFits/harvard_",modelVersion,"_full_varBurn.RData")
   }
   print(outputFileName)
-  if(!file.exists(outputFileName)){
+  if(file.exists(outputFileName)){
     
     variableNames <- c("x","p.proc","b0","b3","b4","b0_leaf","b3_leaf","b4_leaf","b0_tree","b3_tree","b4_tree")
     
@@ -135,7 +137,6 @@ foreach(c=1:nrow(combinations)) %dopar% {
     }else if(modelVersion=="NPP"){
       allData$Cov <- allData$NPP
     }
-    
     j.model   <- jags.model(file = textConnection(model),
                             data = allData,
                             n.chains = nchain,
@@ -152,8 +153,8 @@ foreach(c=1:nrow(combinations)) %dopar% {
                                   partialFile = partialFileName)
       
       out.burn <- thinMCMCOutput(out.burn)  ##Thin the data
+      print(paste("saved:",outputFileName))
       save(out.burn,file = outputFileName)
     }
-    
   }
 }

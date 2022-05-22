@@ -9,7 +9,7 @@ source('sharedVariables.R')
 source('generalFunctions.R')
 source('metFunctions.R')
 options(stringsAsFactors=FALSE)
-species <- "oak"
+species <- "beech"
 
 if(species=="beech"){
   trees <- c("B1","B2","B3")
@@ -36,23 +36,21 @@ for(t in 1:length(trees)){
       
       if(is.null(finalData$GPP)){
         Tair <- rep(NA,(finalData$n+1))
-        tran <- NA
         NPP <- rep(NA,(finalData$n+1))
       }else{
         Tair <- finalData$Tair
-        tran <- finalData$tran[4]
         NPP <- finalData$NPP
         GPP <- finalData$GPP
         R <- finalData$R
         aj <- finalData$aj
         ac <- finalData$ac
       }
+      tran <- finalData$tran[4]
     }else{
       CCI_means <- rbind(CCI_means,finalData$CCI_means)
       CCI_precs<- rbind(CCI_precs,finalData$CCI_precs)
       if(is.null(finalData$GPP)){
         Tair <- rbind(Tair,rep(NA,(finalData$n+1)))
-        tran <- c(tran,NA)
         NPP <- rbind(NPP,rep(NA,(finalData$n)))
         GPP <- rbind(GPP,rep(NA,(finalData$n)))
         R <- rbind(R,rep(NA,(finalData$n)))
@@ -61,13 +59,13 @@ for(t in 1:length(trees)){
         
       }else{
         Tair <- rbind(Tair,finalData$Tair)
-        tran <- c(tran,finalData$tran[4])
         NPP <- rbind(NPP,finalData$NPP)
         GPP <- rbind(GPP,finalData$GPP)
         R <- rbind(R,finalData$R)
         aj <- rbind(aj,finalData$aj)
         ac <- rbind(ac,finalData$ac)
       }
+      tran <- c(tran,finalData$tran[4])
     }
     if(l==3 && t==1){
       allData <- list(CCI_means=CCI_means,
