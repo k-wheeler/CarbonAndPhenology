@@ -93,6 +93,113 @@ model {
   }
     "
 
+generalModel_PC_Interaction = "
+model {
+    ### Data Models for complete years
+    for(yr in 1:(N)){
+    for(i in 1:n){
+    p[i,yr] ~ dnorm(x[i,yr],p.PC)
+    }
+    }
+    
+    #### Process Model
+    for(yr in 1:(N)){
+    for(i in 2:n){
+    
+    xmu[i,yr] <- max(min((x[(i-1),yr] + b4 * x[(i-1),yr]) + max(0,(b0 + b2 * Cov[i,yr] + b3 * TowerTair[i,yr] * D[i,yr] + b1 * Cov[i,yr] * TowerTair[i,yr])),x[1,yr]),0)
+    x[i,yr] ~ dnorm(xmu[i,yr],p.proc)
+    }
+    }
+    
+    #### Priors
+    for(yr in 1:N){ ##Initial Conditions
+    x[1,yr] ~ dbeta(x1.a[yr],x1.b[yr]) I(0.001,0.999)
+    }
+    p.PC ~ dgamma(s1.PC,s2.PC)
+    p.proc ~ dgamma(s1.proc,s2.proc)
+    b0 ~ dunif(b0_lower,b0_upper)
+    b2 ~ dunif(b3_lower,b3_upper)
+    b3 ~ dunif(b3_lower,b3_upper)
+    b4 ~ dunif(b4_lower,b4_upper)
+    b1 ~ dunif(b1_lower,b1_upper)
+    
+  }
+    "
+
+
+generalModel_PC_feedback = "
+model {
+##Constants
+  R <- 8.3144621/1000 ## gas constant
+  r.c <- 18.72
+  r.H <- 46.39 
+  Vc.c <- 26.35
+  Vc.H <- 65.33
+  Vo.c <- 22.98
+  Vo.H <- 60.11
+  cp.c <- 19.02
+  cp.H <- 37.83
+  cp.ref <- 42.75
+  Kc.c <- 38.05
+  Kc.H <- 79.43
+  Kc.ref <- 404.9
+  Ko.c <- 20.30
+  Ko.H <- 36.38
+  Ko.ref <- 278.4
+  Kc <- 46
+  Ko <- 22000#33000?
+  po <- 21000
+  Omega <- 18
+  To <- 37+273.15 
+  
+    ### Data Models for complete years
+    for(yr in 1:(N)){
+    for(i in 1:n){
+    p[i,yr] ~ dnorm(x[i,yr],p.PC)
+    }
+    }
+    
+    #### Process Model
+    for(yr in 1:(N)){
+    for(i in 2:n){
+      #Correcting Based on Chlorophyll: TBD
+      
+      #Correcting Based on Temperature
+        r[i,yr]  <- r0 * exp(r.c - r.H/R/TowerTair[i,yr]) #Temp in Kelvin
+        cp[i,yr] <- cp0 * exp(cp.c - cp.H/R/TowerTair[i,yr])/cp.ref
+        Kc.T[i,yr] <- Kc * exp(Kc.c - Kc.H/R/TowerTair[i,yr])/Kc.ref
+        Ko.T[i,yr] <- Ko * exp(Ko.c - Ko.H/R/TowerTair[i,yr])/Ko.ref
+        Jmax[i,yr] <- Jmax0 * exp(-(TowerTair[i,yr]-To)*(TowerTair[i,yr]-To)/(Omega*Omega))
+        vmax[i,yr] <- vmax0 * exp(Vc.c - Vc.H/R/TowerTair[i,yr])
+    
+      #Medlyn Stomatal Conductance
+      ci[i,yr] <- co2[i,yr] - An2[i,yr]/gs[i,yr]
+      gs[i,yr] <- g0 + (1 + g1/sqrt(vpd[i,yr])*An2[i,yr]/co2[i,yr])
+      An2[i,yr] <- An[i,yr]
+      
+      #Farquhar Model
+      aj[i,yr] <- (alpha*par[i,yr]/(sqrt(1+(alpha*alpha*par[i,yr]*par[i,yr])/(Jmax[i,yr]*Jmax[i,yr]))))*(ci[i,yr]-cp[i,yr])/(4*ci[i,yr]+8*cp[i,yr])    ## electron transport limited
+      ac[i,yr] <- vmax[i,yr]*(ci[i,yr]-cp[i,yr])/(ci[i,yr]+Kc.T[i,yr]*(1+po/Ko.T[i,yr])) 
+      An[i,yr] <- min(aj[i,yr],ac[i,yr])-r[i,yr]
+    
+    xmu[i,yr] <- max(min((x[(i-1),yr] + b4 * x[(i-1),yr]) + max(0,(b0 + b3 * An[i,yr])),x[1,yr]),0)
+    x[i,yr] ~ dnorm(xmu[i,yr],p.proc)
+    }
+    }
+    
+    #### Priors
+    for(yr in 1:N){ ##Initial Conditions
+    x[1,yr] ~ dbeta(x1.a[yr],x1.b[yr]) I(0.001,0.999)
+    }
+    p.PC ~ dgamma(s1.PC,s2.PC)
+    p.proc ~ dgamma(s1.proc,s2.proc)
+    b0 ~ dunif(b0_lower,b0_upper)
+    b3 ~ dunif(b3_lower,b3_upper)
+    b4 ~ dunif(b4_lower,b4_upper)
+    
+  }
+    "
+
 #Beech Leaves Models ----
 generalModel_B_Tair_D = "
 model {

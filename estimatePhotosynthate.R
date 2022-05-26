@@ -9,7 +9,7 @@ source('sharedVariables.R')
 source('generalFunctions.R')
 options(stringsAsFactors = FALSE)
 
-treeSpecies <- "oak"
+treeSpecies <- "beech"
 licorReponseFit <- paste0('LicorFits/',treeSpecies,"_QAQC_August_allRE_LicorResponseCurve_varBurn.RData")
 load(licorReponseFit)
 out.mat <- as.data.frame(as.matrix(out$params))
@@ -97,15 +97,28 @@ medlyn = function(input,Mparams,Fparams,obs,typ){
 }
 
 #Function to Solve Series-of-Equations ----
-solve.model = function(vmax0,Jmax0,r0,cp0,alpha, m, g0,finalData,allDat,typ="NPP"){
+solve.model = function(vmax0,Jmax0,r0,cp0,alpha, m, g0,finalData,allDat,typ="NPP",aging=FALSE){
   output = list()
   print(c(vmax0,Jmax0,r0,cp0,alpha))
+  if(aging){
+    vmax0 <- vmax0*(finalData$L[1]/16.13328)
+    Jmax0 <- Jmax0*(finalData$L[1]/16.13328)
+  }
+
   for(i in 1:finalData$n){					# loop over data points
+    if(aging){
+      vmaxNew <- vmax0*finalData$L[i]/finalData$L[1]
+      JmaxNew <- Jmax0*finalData$L[i]/finalData$L[1]
+    }else{
+      vmaxNew <- vmax0
+      JmaxNew <- Jmax0
+    }
+
     ic <- c(mean(allDat$Photo), mean(allDat$Cond)) 		# take initial conditions from actual data
     out <- optim(ic,			# solve simultaneously for An.pred and gs.pred
                  medlyn,
                  Mparams = c(g0,m),	        # Ballberry params 
-                 Fparams = c(vmax0,Jmax0,r0,cp0,alpha),	# Farquhar params
+                 Fparams = c(vmaxNew,JmaxNew,r0,cp0,alpha),	# Farquhar params
                  obs = c(finalData$co2[i], finalData$vpd[i]+0.001, finalData$par[i],finalData$Tair[i]),# data
                  typ = typ)  			
     output$An.pred[i] = out$par[1]
@@ -168,22 +181,23 @@ cp0 <- mean(out.mat$cp0)
 Jmax0 <- mean(out.mat$Jmax0)
 m=4.85734
 g0=0.1852357
-dataFinal$NPP <- matrix(nrow=dataFinal$n,ncol=dataFinal$N)
-dataFinal$GPP <- matrix(nrow=dataFinal$n,ncol=dataFinal$N)
-dataFinal$R <- matrix(nrow=dataFinal$n,ncol=dataFinal$N)
-dataFinal$aj <- matrix(nrow=dataFinal$n,ncol=dataFinal$N)
-dataFinal$ac <- matrix(nrow=dataFinal$n,ncol=dataFinal$N)
+dataFinal$NPP_aging <- matrix(nrow=dataFinal$n,ncol=dataFinal$N)
+dataFinal$GPP_aging <- matrix(nrow=dataFinal$n,ncol=dataFinal$N)
+dataFinal$R_aging <- matrix(nrow=dataFinal$n,ncol=dataFinal$N)
+dataFinal$aj_aging <- matrix(nrow=dataFinal$n,ncol=dataFinal$N)
+dataFinal$ac_aging <- matrix(nrow=dataFinal$n,ncol=dataFinal$N)
 for(yr in 1:dataFinal$N){
   finalData <- list(co2=dataFinal$co2[,yr], 
                     vpd=dataFinal$vpd[,yr], 
                     par=dataFinal$par[,yr],
                     Tair=dataFinal$TowerTair[,yr],
-                    n=dataFinal$n)
-  dataFinal$NPP[,yr] <- solve.model(vmax0,Jmax0,r0,cp0,alpha, m, g0,finalData,allDat,typ="NPP")
-  dataFinal$GPP[,yr] <- solve.model(vmax0,Jmax0,r0,cp0,alpha, m, g0,finalData,allDat,typ="GPP")
-  dataFinal$R[,yr] <- solve.model(vmax0,Jmax0,r0,cp0,alpha, m, g0,finalData,allDat,typ="R")
-  dataFinal$aj[,yr] <- solve.model(vmax0,Jmax0,r0,cp0,alpha, m, g0,finalData,allDat,typ="aj")
-  dataFinal$ac[,yr] <- solve.model(vmax0,Jmax0,r0,cp0,alpha, m, g0,finalData,allDat,typ="ac")
+                    n=dataFinal$n,
+                    L=dataFinal$D)
+  dataFinal$NPP_aging[,yr] <- solve.model(vmax0,Jmax0,r0,cp0,alpha, m, g0,finalData,allDat,typ="NPP",aging = TRUE)
+  dataFinal$GPP_aging[,yr] <- solve.model(vmax0,Jmax0,r0,cp0,alpha, m, g0,finalData,allDat,typ="GPP",aging = TRUE)
+  dataFinal$R_aging[,yr] <- solve.model(vmax0,Jmax0,r0,cp0,alpha, m, g0,finalData,allDat,typ="R",aging = TRUE)
+  dataFinal$aj_aging[,yr] <- solve.model(vmax0,Jmax0,r0,cp0,alpha, m, g0,finalData,allDat,typ="aj",aging = TRUE)
+  dataFinal$ac_aging[,yr] <- solve.model(vmax0,Jmax0,r0,cp0,alpha, m, g0,finalData,allDat,typ="ac",aging = TRUE)
 }
 #plot(dataFinal$aj[,1],pch=20)
 #save(file=paste0(finalDataDirectory,"bbc1_dataFinal_withPhoto.RData"),dataFinal)

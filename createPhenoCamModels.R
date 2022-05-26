@@ -12,21 +12,22 @@ source('metFunctions.R')
 options(stringsAsFactors=FALSE)
 
 calculateDIC <- TRUE
-c <- 17
+c <- 19
 
-# n.cores <- 3
-# registerDoParallel(cores=n.cores)
+n.cores <- 6
+registerDoParallel(cores=n.cores)
 
 #modelVersion <- "Tair_D"
 
-#foreach(c=1:nrow(combinations)) %dopar% {
-for(c in 1:nrow(combinations)){
+foreach(c=25:nrow(combinations)) %dopar% {
+#for(c in 1:nrow(combinations)){
   
   missingYear <- combinations$missingYear[c]
   excludePostSOS <- combinations$excludePostSOS[c]
   #modelVersion <- "TairOnly"
   modelVersion <- combinations$Cov[c]
   addition <- combinations$Addition[c]
+  interaction <- combinations$interaction[c]
   
   #dates <- seq(as.Date('2016-01-01'),as.Date('2020-12-31'),'day')
   dates <- seq(as.Date('2010-01-01'),as.Date('2020-12-31'),'day')
@@ -40,7 +41,10 @@ for(c in 1:nrow(combinations)){
     variableNames <- c(variableNames,"b2")
   }
   print(variableNames)
-  if(addition){
+  if(interaction){
+    model <- generalModel_PC_Interaction 
+    variableNames <- c(variableNames,"b1")
+  }else if(addition){
     model <- generalModel_PC_CovPlusTair_D
   }else if(modelVersion=="Tair_D"){
     model <- generalModel_PC_Tair_D
@@ -53,20 +57,34 @@ for(c in 1:nrow(combinations)){
     dataFinal$Cov <- dataFinal$GPP
   }else if(modelVersion=="NPP"){
     dataFinal$Cov <- dataFinal$NPP
+  }else if(modelVersion=="GPP_aging"){
+    dataFinal$Cov <- dataFinal$GPP_aging
+  }else if(modelVersion=="NPP_aging"){
+    dataFinal$Cov <- dataFinal$NPP_aging
   }
   if(missingYear){
     dataFinal$p[,2] <- NA 
     if(addition){
-      outputFileName <- paste0("modelFits/harvard_",modelVersion,"_missingYear_CovPlusTair_varBurn.RData")
-      partialFileName <- paste0("modelFits/harvard_",modelVersion,"_missingYear_CovPlusTair_partial_varBurn.RData")
+      if(interaction){
+        outputFileName <- paste0("modelFits/harvard_",modelVersion,"_missingYear_interaction_varBurn.RData")
+        partialFileName <- paste0("modelFits/harvard_",modelVersion,"_missingYear_interaction_partial_varBurn.RData")
+      }else{
+        outputFileName <- paste0("modelFits/harvard_",modelVersion,"_missingYear_CovPlusTair_varBurn.RData")
+        partialFileName <- paste0("modelFits/harvard_",modelVersion,"_missingYear_CovPlusTair_partial_varBurn.RData")
+      }
     }else{
       outputFileName <- paste0("modelFits/harvard_",modelVersion,"_missingYear_varBurn.RData")
       partialFileName <- paste0("modelFits/harvard_",modelVersion,"_missingYear_partial_varBurn.RData")
     }
   }else{
     if(addition){
-      outputFileName <- paste0("modelFits/harvard_",modelVersion,"_full_CovPlusTair_varBurn.RData")
-      partialFileName <- paste0("modelFits/harvard_",modelVersion,"_full_CovPlusTair_partial_varBurn.RData")
+      if(interaction){
+        outputFileName <- paste0("modelFits/harvard_",modelVersion,"_full_interaction_varBurn.RData")
+        partialFileName <- paste0("modelFits/harvard_",modelVersion,"_full_interaction_partial_varBurn.RData")
+      }else{
+        outputFileName <- paste0("modelFits/harvard_",modelVersion,"_full_CovPlusTair_varBurn.RData")
+        partialFileName <- paste0("modelFits/harvard_",modelVersion,"_full_CovPlusTair_partial_varBurn.RData")
+      }
     }else{
       outputFileName <- paste0("modelFits/harvard_",modelVersion,"_full_varBurn.RData")
       partialFileName <- paste0("modelFits/harvard_",modelVersion,"_full_partial_varBurn.RData")
@@ -75,8 +93,13 @@ for(c in 1:nrow(combinations)){
   if(excludePostSOS){
     dataFinal$p[(dataFinal$sofMean-31):dataFinal$n,] <- NA
     if(addition){
-      outputFileName <- paste0("modelFits/harvard_",modelVersion,"_excludePostSOS_CovPlusTair_varBurn.RData")
-      partialFileName <- paste0("modelFits/harvard_",modelVersion,"_excludePostSOS_CovPlusTair_partial_varBurn.RData")
+      if(interaction){
+        outputFileName <- paste0("modelFits/harvard_",modelVersion,"_excludePostSOS_interaction_varBurn.RData")
+        partialFileName <- paste0("modelFits/harvard_",modelVersion,"_excludePostSOS_interaction_partial_varBurn.RData")
+      }else{
+        outputFileName <- paste0("modelFits/harvard_",modelVersion,"_excludePostSOS_interaction_varBurn.RData")
+        partialFileName <- paste0("modelFits/harvard_",modelVersion,"_excludePostSOS_interaction_partial_varBurn.RData")
+      }
     }else{
       outputFileName <- paste0("modelFits/harvard_",modelVersion,"_excludePostSOS_varBurn.RData")
       partialFileName <- paste0("modelFits/harvard_",modelVersion,"_excludePostSOS_partial_varBurn.RData")
@@ -97,6 +120,8 @@ for(c in 1:nrow(combinations)){
   dataFinal$b3_upper <- 0.5
   dataFinal$b4_lower <- -0.5
   dataFinal$b4_upper <- 0
+  dataFinal$b1_upper <- 0.5
+  dataFinal$b1_lower <- -0.5
   
   j.model <- try(jags.model(file = textConnection(model),
                             data = dataFinal,

@@ -10,15 +10,17 @@ source('generalFunctions.R')
 source('metFunctions.R')
 options(stringsAsFactors=FALSE)
 species="beech"
-calculateDIC <- TRUE
+calculateDIC <- FALSE
 c=6
 
-n.cores <- 8
+n.cores <- 6
 registerDoParallel(cores=n.cores)
+combinations <- subset(combinations, as.logical(combinations$missingYear))
+combinations <- subset(combinations, !as.logical(combinations$excludePostSOS))
 
 #modelVersion <- "Tair_D"
 
-foreach(c=1:nrow(combinations)) %dopar% {
+foreach(c=1:6) %dopar% {
 #for(c in 1:nrow(combinations)){
   missingLeaf <- combinations$missingYear[c]
   excludePostSOS <- combinations$excludePostSOS[c]
@@ -77,8 +79,9 @@ foreach(c=1:nrow(combinations)) %dopar% {
   }else{
     inputFileName <- paste0("modelFits/harvard_",modelVersion,"_full_varBurn.RData")
   }
-  print(outputFileName)
-  if(file.exists(outputFileName)){
+
+  if(!file.exists(outputFileName)){
+    print(outputFileName)
     
     variableNames <- c("x","p.proc","b0","b3","b4","b0_leaf","b3_leaf","b4_leaf","b0_tree","b3_tree","b4_tree")
     
