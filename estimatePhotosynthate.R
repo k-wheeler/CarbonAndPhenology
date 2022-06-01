@@ -9,10 +9,9 @@ source('sharedVariables.R')
 source('generalFunctions.R')
 options(stringsAsFactors = FALSE)
 
+feedBack <- TRUE
+
 treeSpecies <- "beech"
-licorReponseFit <- paste0('LicorFits/',treeSpecies,"_QAQC_August_allRE_LicorResponseCurve_varBurn.RData")
-load(licorReponseFit)
-out.mat <- as.data.frame(as.matrix(out$params))
 
 #Load All Licor Data ----
 Allfiles <- paste0(LicorDataDirectory,dir(path=LicorDataDirectory,pattern="-"))
@@ -29,6 +28,23 @@ for(i in 1:length(Allfiles)){
     allDat <- rbind(allDat,dat)
   }
 }
+
+# if(feedBack){
+#   licorReponseFit <- paste0('LicorFits/',treeSpecies,"_QAQC_All_VJfixed_LicorResponseCurve_varBurn.RData")
+#   usedFiles <- unique(allDat$fname)
+#   cov.dat <- as.data.frame(matrix(nrow=length(usedFiles),ncol=1))
+#   cov.dat[,1] <- usedFiles
+#   colnames(cov.dat) <- "fname"
+#   
+#   CCIdat <- read.csv("CCIforLicorMeasurements.csv")
+#   cov.dat <- merge(cov.dat,CCIdat,'fname')[,1:2]
+#   
+#   colnames(cov.dat) <- c("fname","CCI_mean")
+# }else{
+  licorReponseFit <- paste0('LicorFits/',treeSpecies,"_QAQC_August_allRE_LicorResponseCurve_varBurn.RData")
+# }
+load(licorReponseFit)
+out.mat <- as.data.frame(as.matrix(out$params))
 
 #Farquhar Model Defined ----
 #From: https://github.com/PecanProject/pecan/blob/develop/modules/photosynthesis/code/FBB_functions.R
@@ -99,7 +115,7 @@ medlyn = function(input,Mparams,Fparams,obs,typ){
 #Function to Solve Series-of-Equations ----
 solve.model = function(vmax0,Jmax0,r0,cp0,alpha, m, g0,finalData,allDat,typ="NPP",aging=FALSE){
   output = list()
-  print(c(vmax0,Jmax0,r0,cp0,alpha))
+  #print(c(vmax0,Jmax0,r0,cp0,alpha))
   if(aging){
     vmax0 <- vmax0*(finalData$L[1]/16.13328)
     Jmax0 <- Jmax0*(finalData$L[1]/16.13328)
@@ -168,8 +184,8 @@ solve.model = function(vmax0,Jmax0,r0,cp0,alpha, m, g0,finalData,allDat,typ="NPP
 
 #Calculate Photosynthate for PhenoCam (mean Oak)----
 treeSpecies <- "oak"
-licorReponseFit <- paste0('LicorFits/',treeSpecies,"_QAQC_August_allRE_LicorResponseCurve_varBurn.RData")
-load(licorReponseFit)
+#licorReponseFit <- paste0('LicorFits/',treeSpecies,"_QAQC_August_allRE_LicorResponseCurve_varBurn.RData")
+#load(licorReponseFit)
 #load(paste0(finalDataDirectory,"bbc1_dataFinal.RData"))
 load(paste0(finalDataDirectory,"harvard_dataFinal.RData"))
 
@@ -179,8 +195,38 @@ alpha <- mean(out.mat$alpha0)
 r0 <- mean(out.mat$r0)
 cp0 <- mean(out.mat$cp0)
 Jmax0 <- mean(out.mat$Jmax0)
+
 m=4.85734
 g0=0.1852357
+cci_seq <- seq(0,0.99,length.out=100)
+if(feedback){
+  vmax0_base <- vmax0
+  Jmax0_base <- Jmax0
+  dataFinal$NPP <- array(NA,c(dataFinal$n,dataFinal$N,100))
+  dataFinal$GPP <- array(NA,c(dataFinal$n,dataFinal$N,100))
+  dataFinal$R <- array(NA,c(dataFinal$n,dataFinal$N,100))
+  dataFinal$aj <- array(NA,c(dataFinal$n,dataFinal$N,100))
+  dataFinal$ac <- array(NA,c(dataFinal$n,dataFinal$N,100))
+  for(c in 1:100){
+    print(c)
+    vmax0 <- vmax0_base*cci_seq[c]
+    Jmax0 <- Jmax0_base*cci_seq[c]
+  for(yr in 1:dataFinal$N){
+    finalData <- list(co2=dataFinal$co2[,yr], 
+                      vpd=dataFinal$vpd[,yr], 
+                      par=dataFinal$par[,yr],
+                      Tair=dataFinal$TowerTair[,yr],
+                      n=dataFinal$n,
+                      L=dataFinal$D)
+    dataFinal$NPP[,yr,c] <- solve.model(vmax0,Jmax0,r0,cp0,alpha, m, g0,finalData,allDat,typ="NPP",aging = FALSE)
+    dataFinal$GPP[,yr,c] <- solve.model(vmax0,Jmax0,r0,cp0,alpha, m, g0,finalData,allDat,typ="GPP",aging = FALSE)
+    dataFinal$R[,yr,c] <- solve.model(vmax0,Jmax0,r0,cp0,alpha, m, g0,finalData,allDat,typ="R",aging = FALSE)
+    dataFinal$aj[,yr,c] <- solve.model(vmax0,Jmax0,r0,cp0,alpha, m, g0,finalData,allDat,typ="aj",aging = FALSE)
+    dataFinal$ac[,yr,c] <- solve.model(vmax0,Jmax0,r0,cp0,alpha, m, g0,finalData,allDat,typ="ac",aging = FALSE)
+  }
+  }
+  save(file=paste0(finalDataDirectory,"harvard_dataFinal_withPhotoFeedback.RData"),dataFinal)
+}else{
 dataFinal$NPP_aging <- matrix(nrow=dataFinal$n,ncol=dataFinal$N)
 dataFinal$GPP_aging <- matrix(nrow=dataFinal$n,ncol=dataFinal$N)
 dataFinal$R_aging <- matrix(nrow=dataFinal$n,ncol=dataFinal$N)
@@ -202,8 +248,10 @@ for(yr in 1:dataFinal$N){
 #plot(dataFinal$aj[,1],pch=20)
 #save(file=paste0(finalDataDirectory,"bbc1_dataFinal_withPhoto.RData"),dataFinal)
 save(file=paste0(finalDataDirectory,"harvard_dataFinal_withPhoto.RData"),dataFinal)
+}
 
 #Calculate Photosynthate for Individual Leaves and Plot ----
+
 # n <- length(licorLeafNames)
 # qual_col_pals = brewer.pal.info[brewer.pal.info$category == 'qual',]
 # cls = unlist(mapply(brewer.pal, qual_col_pals$maxcolors, rownames(qual_col_pals)))
@@ -217,53 +265,99 @@ if(treeSpecies=="beech"){
 }else if(treeSpecies=="oak"){
   specificLicorLeafNames <- oakLicorAugLeafNames
 }
+cci_seq <- seq(0,0.99,length.out=100)
+if(feedback){
+  for(l in 1:length(specificLicorLeafNames)){
+    lfName <- specificLicorLeafNames[l]
+    print(lfName)
+    load(paste0(finalDataDirectory,lfName,"_finalData_withTran.RData"))
+    
+    vmax0_base <- mean(out.mat[,intersect(grep('Vleaf', colnames(out.mat)),grep(paste0(l,'\\]'), colnames(out.mat)))]+out.mat$vmax0)
+    alpha <- mean(out.mat[,intersect(grep('Aleaf', colnames(out.mat)),grep(paste0(l,'\\]'), colnames(out.mat)))]+out.mat$alpha0)
+    r0 <- mean(out.mat[,intersect(grep('rleaf', colnames(out.mat)),grep(paste0(l,'\\]'), colnames(out.mat)))]+out.mat$r0)
+    cp0 <- mean(out.mat[,intersect(grep('cleaf', colnames(out.mat)),grep(paste0(l,'\\]'), colnames(out.mat)))]+out.mat$cp0)
+    Jmax0_base <- mean(out.mat[,intersect(grep('Jleaf', colnames(out.mat)),grep(paste0(l,'\\]'), colnames(out.mat)))]+out.mat$Jmax0)
+    if(substr(lfName,1,1)=="B"){
+      m=3.737588
+      g0=0.05215698
+    }else if(substr(lfName,1,1)=="O"){
+      m=4.85734
+      g0=0.1852357
+    }
+    finalData$NPP <- array(NA,c(finalData$n,100))
+    finalData$GPP <- array(NA,c(finalData$n,100))
+    finalData$R <- array(NA,c(finalData$n,100))
+    finalData$aj <- array(NA,c(finalData$n,100))
+    finalData$ac <- array(NA,c(finalData$n,100))
+    for(c in 1:100){
+      print(c)
+      vmax0 <- vmax0_base*cci_seq[c]
+      Jmax0 <- Jmax0_base*cci_seq[c]
+      finalData$NPP[,c] <- solve.model(vmax0,Jmax0,r0,cp0,alpha, m, g0,finalData,allDat,typ="NPP")
+      finalData$GPP[,c] <- solve.model(vmax0,Jmax0,r0,cp0,alpha, m, g0,finalData,allDat,typ="GPP")
+      finalData$R[,c] <- solve.model(vmax0,Jmax0,r0,cp0,alpha, m, g0,finalData,allDat,typ="R")
+      finalData$aj[,c] <- solve.model(vmax0,Jmax0,r0,cp0,alpha, m, g0,finalData,allDat,typ="aj")
+      finalData$ac[,c] <- solve.model(vmax0,Jmax0,r0,cp0,alpha, m, g0,finalData,allDat,typ="ac")
+    }
 
-for(l in 1:length(specificLicorLeafNames)){
-  lfName <- specificLicorLeafNames[l]
-  print(lfName)
-  load(paste0(finalDataDirectory,lfName,"_finalData_withTran.RData"))
-  
-  vmax0 <- mean(out.mat[,intersect(grep('Vleaf', colnames(out.mat)),grep(paste0(l,'\\]'), colnames(out.mat)))]+out.mat$vmax0)
-  alpha <- mean(out.mat[,intersect(grep('Aleaf', colnames(out.mat)),grep(paste0(l,'\\]'), colnames(out.mat)))]+out.mat$alpha0)
-  r0 <- mean(out.mat[,intersect(grep('rleaf', colnames(out.mat)),grep(paste0(l,'\\]'), colnames(out.mat)))]+out.mat$r0)
-  cp0 <- mean(out.mat[,intersect(grep('cleaf', colnames(out.mat)),grep(paste0(l,'\\]'), colnames(out.mat)))]+out.mat$cp0)
-  Jmax0 <- mean(out.mat[,intersect(grep('Jleaf', colnames(out.mat)),grep(paste0(l,'\\]'), colnames(out.mat)))]+out.mat$Jmax0)
-  if(substr(lfName,1,1)=="B"){
-    m=3.737588
-    g0=0.05215698
-  }else if(substr(lfName,1,1)=="O"){
-    m=4.85734
-    g0=0.1852357
+    finalData$vmax0 <- vmax0_base
+    finalData$r0 <- r0
+    finalData$Jmax0 <- Jmax0_base
+
+    save(file=paste0('Data/finalData/',lfName,"_finalData_withTran_withPhotoFeedback.RData"),finalData)
   }
-  finalData$NPP <- solve.model(vmax0,Jmax0,r0,cp0,alpha, m, g0,finalData,allDat,typ="NPP")
-  finalData$GPP <- solve.model(vmax0,Jmax0,r0,cp0,alpha, m, g0,finalData,allDat,typ="GPP")
-  finalData$R <- solve.model(vmax0,Jmax0,r0,cp0,alpha, m, g0,finalData,allDat,typ="R")
-  finalData$aj <- solve.model(vmax0,Jmax0,r0,cp0,alpha, m, g0,finalData,allDat,typ="aj")
-  finalData$ac <- solve.model(vmax0,Jmax0,r0,cp0,alpha, m, g0,finalData,allDat,typ="ac")
-  # 
-  # #plot(finalData$dates,finalData$CCI_means[1:finalData$n],pch=20,main=lfName)
-  # #plot(finalData$dates,finalData$Tair[1:finalData$n],type="l",main=lfName)
-  # if(typ=="NPP"){
-  #   ylim=c(-1,25)
-  #   finalData$NPP <- output$An.pred
-  # }else if(typ=="GPP"){
-  #   ylim=c(-1,30)
-  #   finalData$GPP <- output$An.pred
-  # }else if(typ=="R"){
-  #   ylim=c(0,3)
-  #   finalData$R <- output$An.pred
-  # }
-  # if(l==1){
-  #   plot(finalData$dates,output$An.pred,type="l",ylab="An",xlab="Time",col=cls[l],main=typ,ylim=ylim)
-  # }else{
-  #   lines(finalData$dates,output$An.pred,col=cls[l])
-  # }
-  save(file=paste0('Data/finalData/',lfName,"_finalData_withTran_withPhoto.RData"),finalData)
-  
-  #plot(finalData$dates,output$gs.pred,type="l",ylab="gs",xlab="Time",main=lfName)
-  #print(quantile(finalData$Tair,c(0.025,0.5,0.975)))
+}else{
+  for(l in 1:length(specificLicorLeafNames)){
+    lfName <- specificLicorLeafNames[l]
+    print(lfName)
+    load(paste0(finalDataDirectory,lfName,"_finalData_withTran.RData"))
+    
+    vmax0 <- mean(out.mat[,intersect(grep('Vleaf', colnames(out.mat)),grep(paste0(l,'\\]'), colnames(out.mat)))]+out.mat$vmax0)
+    alpha <- mean(out.mat[,intersect(grep('Aleaf', colnames(out.mat)),grep(paste0(l,'\\]'), colnames(out.mat)))]+out.mat$alpha0)
+    r0 <- mean(out.mat[,intersect(grep('rleaf', colnames(out.mat)),grep(paste0(l,'\\]'), colnames(out.mat)))]+out.mat$r0)
+    cp0 <- mean(out.mat[,intersect(grep('cleaf', colnames(out.mat)),grep(paste0(l,'\\]'), colnames(out.mat)))]+out.mat$cp0)
+    Jmax0 <- mean(out.mat[,intersect(grep('Jleaf', colnames(out.mat)),grep(paste0(l,'\\]'), colnames(out.mat)))]+out.mat$Jmax0)
+    
+    if(substr(lfName,1,1)=="B"){
+      m=3.737588
+      g0=0.05215698
+    }else if(substr(lfName,1,1)=="O"){
+      m=4.85734
+      g0=0.1852357
+    }
+    finalData$NPP <- solve.model(vmax0,Jmax0,r0,cp0,alpha, m, g0,finalData,allDat,typ="NPP")
+    finalData$GPP <- solve.model(vmax0,Jmax0,r0,cp0,alpha, m, g0,finalData,allDat,typ="GPP")
+    finalData$R <- solve.model(vmax0,Jmax0,r0,cp0,alpha, m, g0,finalData,allDat,typ="R")
+    finalData$aj <- solve.model(vmax0,Jmax0,r0,cp0,alpha, m, g0,finalData,allDat,typ="aj")
+    finalData$ac <- solve.model(vmax0,Jmax0,r0,cp0,alpha, m, g0,finalData,allDat,typ="ac")
+    finalData$vmax0 <- vmax0
+    finalData$r0 <- r0
+    finalData$Jmax0 <- Jmax0
+    #
+    # #plot(finalData$dates,finalData$CCI_means[1:finalData$n],pch=20,main=lfName)
+    # #plot(finalData$dates,finalData$Tair[1:finalData$n],type="l",main=lfName)
+    # if(typ=="NPP"){
+    #   ylim=c(-1,25)
+    #   finalData$NPP <- output$An.pred
+    # }else if(typ=="GPP"){
+    #   ylim=c(-1,30)
+    #   finalData$GPP <- output$An.pred
+    # }else if(typ=="R"){
+    #   ylim=c(0,3)
+    #   finalData$R <- output$An.pred
+    # }
+    # if(l==1){
+    #   plot(finalData$dates,output$An.pred,type="l",ylab="An",xlab="Time",col=cls[l],main=typ,ylim=ylim)
+    # }else{
+    #   lines(finalData$dates,output$An.pred,col=cls[l])
+    # }
+    save(file=paste0('Data/finalData/',lfName,"_finalData_withTran_withPhoto.RData"),finalData)
+    
+    #plot(finalData$dates,output$gs.pred,type="l",ylab="gs",xlab="Time",main=lfName)
+    #print(quantile(finalData$Tair,c(0.025,0.5,0.975)))
+  }
 }
-  #legend("topright",col=cls,lwd=rep(1,length(cls)),licorLeafNames)
+#legend("topright",col=cls,lwd=rep(1,length(cls)),licorLeafNames)
 
 #dev.off()
 

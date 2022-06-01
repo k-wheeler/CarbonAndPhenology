@@ -9,18 +9,19 @@ source('sharedVariables.R')
 source('generalFunctions.R')
 source('metFunctions.R')
 options(stringsAsFactors=FALSE)
-species="beech"
-calculateDIC <- FALSE
-c=6
+species="oak"
+calculateDIC <- TRUE
+includeAllLeaves <- FALSE
+c=3
 
-n.cores <- 6
+n.cores <- 8
 registerDoParallel(cores=n.cores)
-combinations <- subset(combinations, as.logical(combinations$missingYear))
-combinations <- subset(combinations, !as.logical(combinations$excludePostSOS))
+# combinations <- subset(combinations, !as.logical(combinations$missingYear))
+# combinations <- subset(combinations, !as.logical(combinations$excludePostSOS))
 
 #modelVersion <- "Tair_D"
 
-foreach(c=1:6) %dopar% {
+foreach(c=1:40) %dopar% {
 #for(c in 1:nrow(combinations)){
   missingLeaf <- combinations$missingYear[c]
   excludePostSOS <- combinations$excludePostSOS[c]
@@ -45,6 +46,9 @@ foreach(c=1:6) %dopar% {
     }else if(species=="oak"){
       model <- generalModel_O_Cov
     }
+  }
+  if(includeAllLeaves){
+    model <- generalModel_Tair_D
   }
   
   if(missingLeaf){
@@ -73,28 +77,81 @@ foreach(c=1:6) %dopar% {
       partialFileName <- paste0("modelFits/",species,"_",modelVersion,"_excludePostSOS_partial_varBurn.RData")
     }
   }
+  #outputFileName <- gsub("_varBurn","_noTreeRE_varBurn",outputFileName)
+  if(includeAllLeaves){
+    outputFileName <- gsub("_varBurn","_allLeaves_varBurn",outputFileName)
+  }
+
   dicFileName <- gsub("varBurn","dic",outputFileName)
   if(addition){
     inputFileName <- paste0("modelFits/harvard_",modelVersion,"_full_CovPlusTair_varBurn.RData")
   }else{
     inputFileName <- paste0("modelFits/harvard_",modelVersion,"_full_varBurn.RData")
   }
-
-  if(!file.exists(outputFileName)){
+  if(!file.exists(dicFileName)){
+  if(file.exists(outputFileName)){ ###*********CHANGE FOR NOT DIC
     print(outputFileName)
     
-    variableNames <- c("x","p.proc","b0","b3","b4","b0_leaf","b3_leaf","b4_leaf","b0_tree","b3_tree","b4_tree")
+    #variableNames <- c("x","p.proc","b0","b3","b4","b0_leaf","b3_leaf","b4_leaf","b0_tree","b3_tree","b4_tree")
+    variableNames <- c("x","p.proc","b0","b3","b4","b0_leaf","b3_leaf","b4_leaf")
     
     if(addition){
-      variableNames <- c(variableNames,"b2","b2_leaf","b2_tree")
+      #variableNames <- c(variableNames,"b2","b2_leaf","b2_tree")
+      variableNames <- c(variableNames,"b2","b2_leaf")
     }
     if(species=="beech"){
       load(file=paste0('Data/finalData/',"allbeechLicorLeafData.RData"))
     }else if(species=="oak"){
       load(file=paste0('Data/finalData/',"alloakLicorLeafData.RData"))
     }
+    if(includeAllLeaves){
+      load(file=paste0('Data/finalData/',"all_noPhoto_",species,"LicorLeafData.RData"))
+    }
     
     load(inputFileName)
+    if(modelVersion=="TairOnly"){
+      allData$Cov <- allData$Tair
+    }else if(modelVersion=="GPP"){
+      allData$Cov <- allData$GPP
+    }else if(modelVersion=="NPP"){
+      allData$Cov <- allData$NPP
+    }else if(modelVersion=="NPP_feedback"){
+      load(file=paste0('Data/finalData/',"all",species,"LicorLeafDataFeedback.RData"))
+      
+      allData$Cov  <- allData$NPP
+      allData$Cov  <- abind(allData$Cov,allData$Cov[,100,,],along=2)
+      if(addition){
+        if(species=="beech"){
+          model <- generalModel_B_feedback_CovPlusTair_D
+        }else if(species=="oak"){
+          model <- generalModel_O_feedback_CovPlusTair_D
+        }
+      }else{
+        if(species=="beech"){
+          model <- generalModel_B_feedback
+        }else if(species=="oak"){
+          model <- generalModel_O_feedback
+        }
+      }
+    }else if(modelVersion=="GPP_feedback"){
+      load(file=paste0('Data/finalData/',"all",species,"LicorLeafDataFeedback.RData"))
+      
+      allData$Cov  <- allData$GPP
+      allData$Cov  <- abind(allData$Cov,allData$Cov[,100,,],along=2)
+      if(addition){
+        if(species=="beech"){
+          model <- generalModel_B_feedback_CovPlusTair_D
+        }else if(species=="oak"){
+          model <- generalModel_O_feedback_CovPlusTair_D
+        }
+      }else{
+        if(species=="beech"){
+          model <- generalModel_B_feedback
+        }else if(species=="oak"){
+          model <- generalModel_O_feedback
+        }
+      }
+    }
     
     out.mat <- as.data.frame(as.matrix(out.burn$params))
     mu <- -1*mean(out.mat$b0,na.rm=TRUE)
@@ -123,7 +180,12 @@ foreach(c=1:6) %dopar% {
       allData$b2.b <- (mu-2*mu**2+mu**3-vr+mu*vr)/(vr)
     }
     if(missingLeaf){
-      allData$CCI_means[2,,2] <- NA
+      if(includeAllLeaves){
+        allData$CCI_means[,2] <- NA
+      }else{
+        allData$CCI_means[2,,2] <- NA
+      }
+
     }
     if(excludePostSOS){
       for(t in 1:allData$treeN){ #Probably a cleaner way to do this, but I don't want to think about it now
@@ -133,13 +195,6 @@ foreach(c=1:6) %dopar% {
       }
     }
     
-    if(modelVersion=="TairOnly"){
-      allData$Cov <- allData$Tair
-    }else if(modelVersion=="GPP"){
-      allData$Cov <- allData$GPP
-    }else if(modelVersion=="NPP"){
-      allData$Cov <- allData$NPP
-    }
     j.model   <- jags.model(file = textConnection(model),
                             data = allData,
                             n.chains = nchain,
@@ -152,12 +207,13 @@ foreach(c=1:6) %dopar% {
       save(DIC,file=dicFileName)
     }else{
       out.burn <- runForecastIter(j.model=j.model,variableNames=variableNames,
-                                  baseNum = 15000,iterSize = 5000,effSize = 5000,
+                                  baseNum = 25000,iterSize = 10000,effSize = 5000,
                                   partialFile = partialFileName)
       
       out.burn <- thinMCMCOutput(out.burn)  ##Thin the data
       print(paste("saved:",outputFileName))
       save(out.burn,file = outputFileName)
     }
+  }
   }
 }
